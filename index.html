@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessment de Distribuidores</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+</head>
+<body>
+  <header class="header">
+    <div class="header-brand">
+      <h1>Assessment de Distribuidores</h1>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-step active" data-step="1">
+        <span class="step-number">1</span>
+        <span class="step-label">Datos</span>
+      </div>
+      <div class="progress-step" data-step="2">
+        <span class="step-number">2</span>
+        <span class="step-label">Porte</span>
+      </div>
+      <div class="progress-step" data-step="3">
+        <span class="step-number">3</span>
+        <span class="step-label">Competencias</span>
+      </div>
+      <div class="progress-step" data-step="4">
+        <span class="step-number">4</span>
+        <span class="step-label">Resultados</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- WELCOME / IDENTIFY SCREEN -->
+  <div class="overlay" id="welcome-overlay">
+    <div class="welcome-card">
+      <h2>Assessment de Distribuidores</h2>
+      <p>Ingresá tu nombre para comenzar un nuevo assessment o retomar uno guardado.</p>
+      <div class="form-group">
+        <label for="vendedor_nombre">Tu nombre (vendedor) *</label>
+        <input type="text" id="vendedor_nombre" placeholder="Ej: Juan Pérez">
+      </div>
+      <div class="welcome-actions">
+        <button class="btn-primary" onclick="startNew()">Comenzar Nuevo</button>
+        <button class="btn-secondary" onclick="loadDraft()">Cargar Borrador desde Archivo</button>
+      </div>
+      <div class="welcome-status" id="welcome-status"></div>
+    </div>
+  </div>
+
+  <main class="main-content">
+    <button class="info-help-btn hidden" id="info-help-btn" onclick="showBanner()" title="¿Cómo guardar tu avance?">?</button>
+    <div class="info-banner" id="info-banner">
+      <button class="info-banner-close" onclick="dismissBanner()">&times;</button>
+      <strong>¿Cómo guardar tu avance?</strong>
+      <ul>
+        <li>Usá el botón <strong>"Guardar Borrador"</strong> (abajo) para descargar un archivo con tu progreso.</li>
+        <li>Cuando vuelvas a entrar, hacé click en <strong>"Cargar Borrador desde Archivo"</strong> y seleccioná ese archivo para retomar donde dejaste.</li>
+        <li>Si usás siempre el mismo navegador y dispositivo, tu avance se guarda automáticamente. Pero te recomendamos descargar el borrador como respaldo por si se borra el historial.</li>
+      </ul>
+    </div>
+
+    <!-- STEP 1: Datos Generales -->
+    <section class="step-panel active" id="step-1">
+      <h2>Datos Generales</h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="nombre_distribuidor">Nombre del Distribuidor *</label>
+          <input type="text" id="nombre_distribuidor" required>
+        </div>
+        <div class="form-group">
+          <label for="region">Región *</label>
+          <input type="text" id="region" required>
+        </div>
+        <div class="form-group">
+          <label for="squad">Squad *</label>
+          <input type="text" id="squad" required>
+        </div>
+        <div class="form-group">
+          <label for="zonas_atendidas">Zonas Atendidas</label>
+          <input type="text" id="zonas_atendidas">
+        </div>
+        <div class="form-group">
+          <label for="fecha">Fecha *</label>
+          <input type="date" id="fecha" required>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 2: Porte -->
+    <section class="step-panel" id="step-2">
+      <h2>Porte del Distribuidor</h2>
+
+      <div class="section-block">
+        <h3>Performance</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="facturacion_total">Facturación total 2024 (MM)</label>
+            <input type="number" id="facturacion_total" step="any">
+          </div>
+          <div class="form-group">
+            <label for="representatividad_bayer">% Representatividad Bayer</label>
+            <input type="number" id="representatividad_bayer" step="any" min="0" max="100">
+          </div>
+          <div class="form-group">
+            <label for="facturacion_bayer">Facturación total Bayer 2024</label>
+            <input type="number" id="facturacion_bayer" step="any">
+          </div>
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Proveedores</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="num_proveedores">Número total de proveedores</label>
+            <input type="number" id="num_proveedores" min="0">
+          </div>
+          <div class="form-group">
+            <label for="num_skus">Número total de SKUs (todos proveedores)</label>
+            <input type="number" id="num_skus" min="0">
+          </div>
+        </div>
+        <h4>Principales Proveedores</h4>
+        <table class="data-table" id="proveedores-table">
+          <thead>
+            <tr>
+              <th>Proveedor</th>
+              <th>% de ventas</th>
+              <th># SKUs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
+            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
+            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
+            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
+            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-block">
+        <h3>Clientes / Área</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="total_clientes"># total de clientes que atiende</label>
+            <input type="number" id="total_clientes" min="0">
+          </div>
+          <div class="form-group">
+            <label for="clientes_bayer"># total de clientes que atiende con Bayer</label>
+            <input type="number" id="clientes_bayer" min="0">
+          </div>
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Porte - Empleados</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="empleados_total"># de Empleados Total</label>
+            <input type="number" id="empleados_total" min="0">
+          </div>
+          <div class="form-group">
+            <label for="empleados_admin">Administrativo (financiero, RH, marketing, TI, etc)</label>
+            <input type="number" id="empleados_admin" min="0">
+          </div>
+          <div class="form-group">
+            <label for="empleados_asesores">Comercial - asesores agronómicos</label>
+            <input type="number" id="empleados_asesores" min="0">
+          </div>
+          <div class="form-group">
+            <label for="empleados_gerentes">Comercial - gerentes/supervisores</label>
+            <input type="number" id="empleados_gerentes" min="0">
+          </div>
+          <div class="form-group">
+            <label for="empleados_comercial_otros">Comercial - Otros</label>
+            <input type="number" id="empleados_comercial_otros" min="0">
+          </div>
+          <div class="form-group">
+            <label for="empleados_otras_areas">Otras áreas</label>
+            <input type="number" id="empleados_otras_areas" min="0">
+          </div>
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Flota - Cantidad de vehículos</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="vehiculos_propios"># Vehículos Propios</label>
+            <input type="number" id="vehiculos_propios" min="0">
+          </div>
+          <div class="form-group">
+            <label for="vehiculos_terceros"># Vehículos de Terceros</label>
+            <input type="number" id="vehiculos_terceros" min="0">
+          </div>
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Depósito</h3>
+        <table class="data-table" id="depositos-table">
+          <thead>
+            <tr>
+              <th>Dirección</th>
+              <th>Tamaño (m²)</th>
+              <th># de Empleados Depósito</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="text"></td>
+              <td><input type="number" step="any"></td>
+              <td><input type="number"></td>
+              <td><button type="button" class="btn-remove-row" onclick="removeDepositRow(this)">✕</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <button type="button" class="btn-secondary" onclick="addDepositRow()">+ Agregar depósito</button>
+      </div>
+    </section>
+
+    <!-- STEP 3: Competencias -->
+    <section class="step-panel" id="step-3">
+      <h2>Evaluación de Competencias</h2>
+      <div class="category-tabs" id="category-tabs"></div>
+      <div class="category-progress" id="category-progress"></div>
+      <div class="questions-container" id="questions-container"></div>
+    </section>
+
+    <!-- STEP 4: Resultados -->
+    <section class="step-panel" id="step-4">
+      <h2>Resultados del Assessment</h2>
+      <div class="results-header" id="results-header"></div>
+      <div class="results-score" id="results-score"></div>
+      <div class="results-grid">
+        <div class="results-table-container">
+          <table class="results-table" id="results-table">
+            <thead>
+              <tr>
+                <th>Competencia</th>
+                <th>Calificación sobre total</th>
+                <th>Calificación por categoría</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="results-chart-container">
+          <canvas id="radarChart"></canvas>
+        </div>
+      </div>
+      <div class="results-actions">
+        <button type="button" class="btn-secondary" onclick="exportExcel()">Descargar Excel</button>
+        <button type="button" class="btn-primary" onclick="submitAssessment()">Finalizar y Descargar Assessment</button>
+      </div>
+      <div class="submit-status" id="submit-status"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="nav-buttons">
+      <button type="button" class="btn-secondary" id="btn-prev" onclick="prevStep()" disabled>← Anterior</button>
+      <button type="button" class="btn-save-draft" onclick="saveDraft()">💾 Guardar Borrador</button>
+      <button type="button" class="btn-primary" id="btn-next" onclick="nextStep()">Siguiente →</button>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
