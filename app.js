@@ -1104,6 +1104,22 @@ async function exportExcel() {
   totalRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
   totalRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
 
+  // --- Radar chart as image ---
+  const radarCanvas = document.getElementById('radarChart');
+  if (radarCanvas) {
+    try {
+      const radarBase64 = radarCanvas.toDataURL('image/png').split(',')[1];
+      const imageId = wb.addImage({ base64: radarBase64, extension: 'png' });
+      wsRes.addRow([]);
+      wsRes.addRow([]);
+      const chartStartRow = wsRes.rowCount + 1;
+      wsRes.addImage(imageId, {
+        tl: { col: 0, row: chartStartRow - 1 },
+        ext: { width: 480, height: 480 }
+      });
+    } catch(e) { /* skip chart if capture fails */ }
+  }
+
   // --- Download ---
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
