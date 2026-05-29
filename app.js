@@ -25,7 +25,7 @@ async function initApp() {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (session) {
     currentUser = session.user;
-    if (currentUser.user_metadata?.must_change_password) {
+    if (!currentUser.user_metadata?.password_changed) {
       showChangePassword();
     } else {
       showHome();
@@ -77,10 +77,7 @@ async function handleLogin(e) {
   currentUser = data.user;
   statusEl.className = 'login-status';
 
-  console.log('USER METADATA:', JSON.stringify(currentUser.user_metadata));
-  console.log('APP METADATA:', JSON.stringify(currentUser.app_metadata));
-
-  if (currentUser.user_metadata?.must_change_password) {
+  if (!currentUser.user_metadata?.password_changed) {
     showChangePassword();
   } else {
     showHome();
@@ -127,7 +124,7 @@ async function handleChangePassword(e) {
   }
 
   const { error: metaError } = await supabaseClient.auth.updateUser({
-    data: { must_change_password: false }
+    data: { password_changed: true }
   });
 
   document.getElementById('change-password-btn').disabled = false;
