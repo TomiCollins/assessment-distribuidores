@@ -92,7 +92,9 @@ async function handlePasswordReset() {
     return;
   }
 
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+    redirectTo: 'https://assessment-distribuidores.vercel.app'
+  });
   if (error) {
     statusEl.textContent = 'No se pudo enviar el email. Verificá la dirección.';
     statusEl.className = 'login-status error';
