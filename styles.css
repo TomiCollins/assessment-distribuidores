@@ -1013,6 +1013,62 @@ html {
   font-weight: 500;
 }
 
+.admin-breadcrumb {
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: var(--medium-text);
+}
+
+.breadcrumb-link {
+  color: var(--primary-blue);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.breadcrumb-link:hover {
+  color: var(--primary-green);
+}
+
+.breadcrumb-current {
+  font-weight: 600;
+  color: var(--dark-text);
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.admin-bu-card {
+  background: white;
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border-left: 4px solid var(--primary-blue);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-bu-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.admin-bu-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--dark-text);
+}
+
+.admin-bu-count {
+  font-size: 0.85rem;
+  color: var(--medium-text);
+}
+
 .assessment-card .card-distribuidor {
   font-weight: 600;
   font-size: 0.95rem;

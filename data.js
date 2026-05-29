@@ -64,7 +64,7 @@ const DISTRIBUIDORES = [
   { cuit: "30707523057", razonSocial: "SAC S.A.", bu: "Centro", squad: "Centro" },
   { cuit: "30708997354", razonSocial: "SANCHEZ AGRONEGOCIOS S.A.", bu: "Centro", squad: "RIO IV & S. LUIS" },
   { cuit: "30710042787", razonSocial: "SERAGRO S.A.", bu: "Centro", squad: "RIO IV & S. LUIS" },
-  { cuit: "30697218056", razonSocial: "SINER S.A", bu: "Norte", squad: "NOA / Este" },
+  { cuit: "30697218056", razonSocial: "SINER S.A", bu: "Norte", squad: "NOA" },
   { cuit: "30709011762", razonSocial: "TECNOSUR S.R.L.", bu: "Centro", squad: "Córdoba Este" },
   { cuit: "30708276215", razonSocial: "TERRA MAS S.R.L.", bu: "Sur", squad: "Núcleo Sur" },
   { cuit: "30710268998", razonSocial: "TERRA SALTO S.R.L.", bu: "Sur", squad: "Núcleo Sur" },

@@ -8,6 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
 </head>
 <body>
   <!-- LOGIN OVERLAY -->
@@ -80,9 +81,10 @@
       <div class="assessments-section" id="admin-section" style="display:none">
         <div class="section-header-row">
           <h3>Todos los Assessments (Admin)</h3>
-          <button class="btn-secondary btn-sm" id="btn-download-all-admin" onclick="downloadAllAdmin()">Descargar todos los Excel</button>
+          <button class="btn-secondary btn-sm" id="btn-download-all-admin" onclick="downloadAllAdminZip()">Descargar todo (ZIP)</button>
         </div>
-        <div class="assessment-cards" id="cards-admin"></div>
+        <div class="admin-breadcrumb" id="admin-breadcrumb"></div>
+        <div class="admin-content" id="admin-content"></div>
       </div>
     </div>
   </div>

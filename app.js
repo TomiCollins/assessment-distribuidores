@@ -365,19 +365,89 @@ async function downloadAllCompleted() {
 }
 
 // === ADMIN FUNCTIONS ===
+let adminAssessments = [];
+
 async function loadAdminAssessments() {
   const { data, error } = await supabaseClient.rpc('get_all_assessments');
-  const container = document.getElementById('cards-admin');
+  const container = document.getElementById('admin-content');
 
   if (error || !data || data.length === 0) {
     container.innerHTML = '<div class="home-empty-state">No hay assessments completados de ningún usuario.</div>';
     return;
   }
 
-  container.innerHTML = data.map(a => {
+  adminAssessments = data;
+  renderAdminBUs();
+}
+
+function renderAdminBUs() {
+  const container = document.getElementById('admin-content');
+  document.getElementById('admin-breadcrumb').innerHTML = '';
+
+  const buGroups = {};
+  adminAssessments.forEach(a => {
+    const bu = a.bu || 'Sin BU';
+    if (!buGroups[bu]) buGroups[bu] = [];
+    buGroups[bu].push(a);
+  });
+
+  const buOrder = ['Norte', 'Centro', 'Sur'];
+  const sortedBUs = buOrder.filter(b => buGroups[b]).concat(
+    Object.keys(buGroups).filter(b => !buOrder.includes(b))
+  );
+
+  container.innerHTML = `<div class="admin-grid">${sortedBUs.map(bu => `
+    <div class="admin-bu-card" onclick="navigateAdmin('${bu}')">
+      <div class="admin-bu-name">${bu}</div>
+      <div class="admin-bu-count">${buGroups[bu].length} assessment${buGroups[bu].length !== 1 ? 's' : ''}</div>
+      <button class="btn-card-secondary" onclick="event.stopPropagation(); downloadBUZip('${bu}')">Descargar BU (ZIP)</button>
+    </div>
+  `).join('')}</div>`;
+}
+
+function renderAdminSquads(bu) {
+  const container = document.getElementById('admin-content');
+  document.getElementById('admin-breadcrumb').innerHTML = `
+    <span class="breadcrumb-link" onclick="renderAdminBUs()">Admin</span> &gt; <span class="breadcrumb-current">${bu}</span>
+  `;
+
+  const filtered = adminAssessments.filter(a => a.bu === bu);
+  const squadGroups = {};
+  filtered.forEach(a => {
+    const squad = a.squad || 'Sin Squad';
+    if (!squadGroups[squad]) squadGroups[squad] = [];
+    squadGroups[squad].push(a);
+  });
+
+  const sortedSquads = Object.keys(squadGroups).sort();
+
+  container.innerHTML = `<div class="admin-grid">${sortedSquads.map(squad => `
+    <div class="admin-bu-card" onclick="navigateAdmin('${bu}', '${squad}')">
+      <div class="admin-bu-name">${squad}</div>
+      <div class="admin-bu-count">${squadGroups[squad].length} assessment${squadGroups[squad].length !== 1 ? 's' : ''}</div>
+      <button class="btn-card-secondary" onclick="event.stopPropagation(); downloadSquadZip('${bu}', '${squad}')">Descargar Squad (ZIP)</button>
+    </div>
+  `).join('')}</div>`;
+}
+
+function renderAdminAssessments(bu, squad) {
+  const container = document.getElementById('admin-content');
+  document.getElementById('admin-breadcrumb').innerHTML = `
+    <span class="breadcrumb-link" onclick="renderAdminBUs()">Admin</span> &gt;
+    <span class="breadcrumb-link" onclick="renderAdminSquads('${bu}')">${bu}</span> &gt;
+    <span class="breadcrumb-current">${squad}</span>
+  `;
+
+  const filtered = adminAssessments.filter(a => a.bu === bu && a.squad === squad);
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="home-empty-state">No hay assessments en este squad.</div>';
+    return;
+  }
+
+  container.innerHTML = `<div class="assessment-cards">${filtered.map(a => {
     const fecha = a.fecha ? new Date(a.fecha).toLocaleDateString('es-AR') : 'Sin fecha';
     const updated = new Date(a.updated_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-
     return `
       <div class="assessment-card status-completado">
         <div class="card-user-email">${a.user_email}</div>
@@ -388,67 +458,97 @@ async function loadAdminAssessments() {
         </div>
       </div>
     `;
-  }).join('');
+  }).join('')}</div>`;
+}
+
+function navigateAdmin(bu, squad) {
+  if (squad) {
+    renderAdminAssessments(bu, squad);
+  } else {
+    renderAdminSquads(bu);
+  }
 }
 
 async function downloadExcelAdmin(id) {
-  const { data, error } = await supabaseClient.rpc('get_all_assessments');
-  if (error || !data) {
-    showToast('No se pudo cargar el assessment.');
-    return;
-  }
-  const assessment = data.find(a => a.id === id);
+  const assessment = adminAssessments.find(a => a.id === id);
   if (!assessment) {
     showToast('Assessment no encontrado.');
     return;
   }
-
-  const payload = assessment.payload || {};
-  state.answers = payload.answers || {};
-  state.vendedorNombre = assessment.vendedor || '';
-
-  if (payload.datos) {
-    Object.entries(payload.datos).forEach(([key, val]) => {
-      if (key === 'zonas_atendidas') return;
-      const el = document.getElementById(key);
-      if (el) el.value = val || '';
-    });
-  }
-
-  await exportExcel();
+  const { buffer, filename } = await generateExcelBuffer(assessment);
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('Excel descargado.');
 }
 
-async function downloadAllAdmin() {
-  showToast('Descargando todos los assessments...');
-  const { data, error } = await supabaseClient.rpc('get_all_assessments');
+async function downloadAllAdminZip() {
+  if (adminAssessments.length === 0) { showToast('No hay assessments.'); return; }
+  showToast('Generando ZIP con todos los assessments...');
+  const zip = new JSZip();
 
-  if (error || !data || data.length === 0) {
-    showToast('No hay assessments completados.');
-    return;
+  for (const a of adminAssessments) {
+    const { buffer, filename } = await generateExcelBuffer(a);
+    const bu = (a.bu || 'Sin_BU').replace(/[\/\\]/g, '-');
+    const squad = (a.squad || 'Sin_Squad').replace(/[\/\\]/g, '-');
+    zip.file(`${bu}/${squad}/${filename}`, buffer);
   }
 
-  for (let i = 0; i < data.length; i++) {
-    const a = data[i];
-    const payload = a.payload || {};
-    state.answers = payload.answers || {};
-    state.vendedorNombre = a.vendedor || '';
+  const content = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(content);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'Assessments_Todos.zip';
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('ZIP descargado.');
+}
 
-    if (payload.datos) {
-      Object.entries(payload.datos).forEach(([key, val]) => {
-        if (key === 'zonas_atendidas') return;
-        const el = document.getElementById(key);
-        if (el) el.value = val || '';
-      });
-    }
+async function downloadBUZip(bu) {
+  const filtered = adminAssessments.filter(a => a.bu === bu);
+  if (filtered.length === 0) { showToast('No hay assessments en esta BU.'); return; }
+  showToast(`Generando ZIP de ${bu}...`);
+  const zip = new JSZip();
 
-    await exportExcel();
-
-    if (i < data.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 800));
-    }
+  for (const a of filtered) {
+    const { buffer, filename } = await generateExcelBuffer(a);
+    const squad = (a.squad || 'Sin_Squad').replace(/[\/\\]/g, '-');
+    zip.file(`${squad}/${filename}`, buffer);
   }
 
-  showToast(`${data.length} Excel(s) descargados.`);
+  const content = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(content);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Assessments_${bu}.zip`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('ZIP descargado.');
+}
+
+async function downloadSquadZip(bu, squad) {
+  const filtered = adminAssessments.filter(a => a.bu === bu && a.squad === squad);
+  if (filtered.length === 0) { showToast('No hay assessments en este squad.'); return; }
+  showToast(`Generando ZIP de ${squad}...`);
+  const zip = new JSZip();
+
+  for (const a of filtered) {
+    const { buffer, filename } = await generateExcelBuffer(a);
+    zip.file(filename, buffer);
+  }
+
+  const content = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(content);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Assessments_${bu}_${squad}.zip`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('ZIP descargado.');
 }
 
 // === WIZARD DISPLAY ===
@@ -1097,7 +1197,8 @@ async function exportExcel() {
     ['Squad', datos.squad || ''],
     ['Zonas Atendidas', zonasStr],
     ['Fecha', datos.fecha || ''],
-    ['Vendedor', state.vendedorNombre || '']
+    ['Vendedor', state.vendedorNombre || ''],
+    ['Usuario', currentUser?.email || '']
   ];
   datosFields.forEach((row, i) => {
     const r = wsDatos.addRow(row);
@@ -1119,6 +1220,10 @@ async function exportExcel() {
     fields.forEach(f => {
       const r = wsPorte.addRow(f);
       r.eachCell(cell => { cell.border = borders; });
+      if (typeof f[1] === 'number' || (typeof f[1] === 'string' && /^\d+$/.test(f[1]) && f[1].length > 0)) {
+        r.getCell(2).value = Number(f[1]);
+        r.getCell(2).numFmt = '#,##0';
+      }
     });
     wsPorte.addRow([]);
   }
@@ -1283,6 +1388,219 @@ async function exportExcel() {
   link.click();
   URL.revokeObjectURL(url);
   showToast('Excel descargado correctamente');
+}
+
+async function generateExcelBuffer(assessment) {
+  const payload = assessment.payload || {};
+  const datos = payload.datos || {};
+  const porte = payload.porte || {};
+  const answers = payload.answers || {};
+  const userEmail = assessment.user_email || assessment.vendedor || '';
+
+  const wb = new ExcelJS.Workbook();
+  const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+  const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0068B4' } };
+  const subHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00824B' } };
+  const lightFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
+  const borderStyle = { style: 'thin', color: { argb: 'FFE0E5EB' } };
+  const borders = { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle };
+
+  // --- SOLAPA 1: Datos ---
+  const wsDatos = wb.addWorksheet('Datos');
+  wsDatos.columns = [{ width: 28 }, { width: 45 }];
+  wsDatos.views = [{ showGridLines: false }];
+  const datosTitle = wsDatos.addRow(['DATOS GENERALES', '']);
+  datosTitle.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF0068B4' } };
+  wsDatos.addRow([]);
+  const datosHeader = wsDatos.addRow(['Campo', 'Valor']);
+  datosHeader.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
+  const zonasStr = Array.isArray(datos.zonas_atendidas) ? datos.zonas_atendidas.join(', ') : (datos.zonas_atendidas || '');
+  const datosFields = [
+    ['Razón Social', datos.nombre_distribuidor || ''],
+    ['CUIT', datos.cuit || ''],
+    ['BU', datos.region || ''],
+    ['Squad', datos.squad || ''],
+    ['Zonas Atendidas', zonasStr],
+    ['Fecha', datos.fecha || ''],
+    ['Vendedor', assessment.vendedor || ''],
+    ['Usuario', userEmail]
+  ];
+  datosFields.forEach((row, i) => {
+    const r = wsDatos.addRow(row);
+    r.eachCell(cell => { cell.border = borders; });
+    if (i % 2 === 0) r.getCell(1).fill = lightFill;
+  });
+
+  // --- SOLAPA 2: Porte ---
+  const wsPorte = wb.addWorksheet('Porte');
+  wsPorte.columns = [{ width: 32 }, { width: 22 }, { width: 16 }];
+  wsPorte.views = [{ showGridLines: false }];
+
+  function addPorteSectionBuf(title, fields) {
+    const titleRow = wsPorte.addRow([title]);
+    titleRow.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF00824B' } };
+    wsPorte.addRow([]);
+    const hdr = wsPorte.addRow(['Campo', 'Valor']);
+    hdr.eachCell(cell => { cell.font = headerFont; cell.fill = subHeaderFill; cell.border = borders; });
+    fields.forEach(f => {
+      const r = wsPorte.addRow(f);
+      r.eachCell(cell => { cell.border = borders; });
+      if (typeof f[1] === 'number' || (typeof f[1] === 'string' && /^\d+$/.test(f[1]) && f[1].length > 0)) {
+        r.getCell(2).value = Number(f[1]);
+        r.getCell(2).numFmt = '#,##0';
+      }
+    });
+    wsPorte.addRow([]);
+  }
+
+  addPorteSectionBuf('Performance', [
+    ['Facturación total 2025 (USD)', porte.facturacion_total || ''],
+    ['% Representatividad Bayer', porte.representatividad_bayer || ''],
+    ['Facturación total Agrobayer 2025 (USD)', porte.facturacion_bayer || '']
+  ]);
+  addPorteSectionBuf('Clientes', [
+    ['Cantidad total de clientes', porte.total_clientes || ''],
+    ['Cantidad clientes con Bayer', porte.clientes_bayer || '']
+  ]);
+  const empleadosFields = [
+    ['Cantidad Gerentes', porte.empleados_gerentes || ''],
+    ['Cantidad Administrativos', porte.empleados_admin || ''],
+    ['Cantidad Asesores', porte.empleados_asesores || '']
+  ];
+  if (porte.otras_areas && porte.otras_areas.length > 0) {
+    porte.otras_areas.forEach(a => { empleadosFields.push([a.nombre || 'Otra área', a.cantidad || '']); });
+  }
+  addPorteSectionBuf('Empleados', empleadosFields);
+  addPorteSectionBuf('Flota', [
+    ['Cantidad Vehículos Propios', porte.vehiculos_propios || ''],
+    ['Cantidad Vehículos de Terceros', porte.vehiculos_terceros || '']
+  ]);
+
+  const provTitle = wsPorte.addRow(['Proveedores']);
+  provTitle.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF00824B' } };
+  wsPorte.addRow([]);
+  wsPorte.addRow(['Cantidad de proveedores: ' + (porte.num_proveedores || '')]);
+  const provHdr = wsPorte.addRow(['Proveedor', '% Ventas']);
+  provHdr.eachCell(cell => { cell.font = headerFont; cell.fill = subHeaderFill; cell.border = borders; });
+  if (porte.proveedores && porte.proveedores.length > 0) {
+    porte.proveedores.forEach(p => {
+      const r = wsPorte.addRow([p.nombre || '', p.pctVentas || '']);
+      r.eachCell(cell => { cell.border = borders; });
+    });
+  }
+  wsPorte.addRow([]);
+
+  const depTitleRow = wsPorte.addRow(['Depósitos']);
+  depTitleRow.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF00824B' } };
+  wsPorte.addRow([]);
+  const depHdr = wsPorte.addRow(['Dirección', 'Tamaño (m²)', 'Cantidad Empleados', 'Horario de Atención']);
+  depHdr.eachCell(cell => { cell.font = headerFont; cell.fill = subHeaderFill; cell.border = borders; });
+  if (porte.depositos && porte.depositos.length > 0) {
+    porte.depositos.forEach(d => {
+      const r = wsPorte.addRow([d.direccion || '', d.tamanoM2 || '', d.empleados || '', d.horario || '']);
+      r.eachCell(cell => { cell.border = borders; });
+    });
+  }
+  wsPorte.addRow([]);
+
+  const pvTitleRow = wsPorte.addRow(['Puntos de Venta']);
+  pvTitleRow.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF00824B' } };
+  wsPorte.addRow([]);
+  const pvHdr = wsPorte.addRow(['Tipo', 'Dirección', 'Cantidad Empleados']);
+  pvHdr.eachCell(cell => { cell.font = headerFont; cell.fill = subHeaderFill; cell.border = borders; });
+  if (porte.puntos_venta && porte.puntos_venta.length > 0) {
+    porte.puntos_venta.forEach(pv => {
+      const r = wsPorte.addRow([pv.tipo || '', pv.direccion || '', pv.empleados || '']);
+      r.eachCell(cell => { cell.border = borders; });
+    });
+  }
+
+  // --- SOLAPA 3: Assessment ---
+  const wsAssess = wb.addWorksheet('Assessment');
+  wsAssess.columns = [{ width: 6 }, { width: 36 }, { width: 50 }, { width: 14 }, { width: 10 }, { width: 50 }];
+  wsAssess.views = [{ showGridLines: false }];
+  const assessHdr = wsAssess.addRow(['#', 'Categoría / Aspecto', 'Pregunta', 'Puntuación', 'Valor', 'Observaciones']);
+  assessHdr.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
+
+  ASSESSMENT_DATA.categories.forEach(cat => {
+    cat.questions.forEach(q => {
+      const answer = answers[q.id] || {};
+      const subQs = getSubQuestions(q);
+      const subAnswered = subQs.filter((_, i) => answer.sub?.[i]).length;
+      const avg = subAnswered > 0 ? subQs.reduce((sum, _, i) => sum + (getCalificacionValue(answer.sub?.[i]) || 0), 0) / subQs.length : 0;
+
+      const sectionRow = wsAssess.addRow([q.id, cat.name + ' — ' + q.aspecto, '', '', avg || '', answer.observaciones || '']);
+      sectionRow.getCell(1).font = { bold: true };
+      sectionRow.getCell(2).font = { bold: true };
+      sectionRow.getCell(5).numFmt = '0%';
+      sectionRow.eachCell(cell => { cell.border = borders; cell.fill = lightFill; });
+
+      subQs.forEach((sq, i) => {
+        const subVal = answer.sub?.[i] || '';
+        const calLabel = subVal ? (subVal === 'bajo' ? 'Bajo' : subVal === 'mediano' ? 'Mediano' : 'Alto') : '';
+        const numVal = subVal ? getCalificacionValue(subVal) : '';
+        const r = wsAssess.addRow(['', '', sq, calLabel, numVal, '']);
+        r.eachCell(cell => { cell.border = borders; });
+        r.getCell(5).numFmt = '0%';
+        if (subVal === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' } };
+        else if (subVal === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' } };
+        else if (subVal === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' } };
+      });
+    });
+  });
+
+  // --- SOLAPA 4: Resultados ---
+  const wsRes = wb.addWorksheet('Resultados');
+  wsRes.columns = [{ width: 42 }, { width: 22 }, { width: 24 }];
+  wsRes.views = [{ showGridLines: false }];
+  const resTitle = wsRes.addRow(['RESULTADOS DEL ASSESSMENT', '', '']);
+  resTitle.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF0068B4' } };
+  wsRes.addRow([]);
+  const resInfo = wsRes.addRow(['Distribuidor: ' + (datos.nombre_distribuidor || ''), 'CUIT: ' + (datos.cuit || ''), 'Fecha: ' + (datos.fecha || '')]);
+  resInfo.getCell(1).font = { bold: true };
+  wsRes.addRow([]);
+  const resHdr = wsRes.addRow(['Competencia', 'Score sobre Total', 'Score por Categoría']);
+  resHdr.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
+
+  const bufResults = calculateResultsFromAnswers(answers);
+  bufResults.categorias.forEach((r, i) => {
+    const row = wsRes.addRow([r.name, r.scoreTotal, r.scoreCategoria]);
+    row.eachCell(cell => { cell.border = borders; });
+    row.getCell(2).numFmt = '0%';
+    row.getCell(3).numFmt = '0%';
+    if (i % 2 === 0) row.getCell(1).fill = lightFill;
+  });
+
+  wsRes.addRow([]);
+  const totalRow = wsRes.addRow(['TOTAL GENERAL', bufResults.totalGeneral, '']);
+  totalRow.getCell(1).font = { bold: true, size: 12 };
+  totalRow.getCell(2).font = { bold: true, size: 12 };
+  totalRow.getCell(2).numFmt = '0%';
+  totalRow.eachCell(cell => { cell.border = borders; });
+  totalRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
+  totalRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const filename = `Assessment_${(datos.nombre_distribuidor || 'sin_nombre').replace(/\s+/g, '_')}_${datos.fecha || 'sin_fecha'}.xlsx`;
+  return { buffer, filename };
+}
+
+function calculateResultsFromAnswers(answers) {
+  const results = ASSESSMENT_DATA.categories.map(cat => {
+    let scoreSeccion = 0;
+    let scoreTotal = 0;
+    cat.questions.forEach(q => {
+      const subQs = getSubQuestions(q);
+      const answer = answers[q.id] || {};
+      const subAnswered = subQs.filter((_, i) => answer.sub?.[i]).length;
+      const avg = subAnswered > 0 ? subQs.reduce((sum, _, i) => sum + (getCalificacionValue(answer.sub?.[i]) || 0), 0) / subQs.length : 0;
+      scoreTotal += avg * q.ponderacionTotal;
+      scoreSeccion += avg * q.ponderacionSeccion;
+    });
+    return { name: cat.name, scoreTotal, scoreCategoria: scoreSeccion };
+  });
+  const totalGeneral = results.reduce((sum, r) => sum + r.scoreTotal, 0);
+  return { categorias: results, totalGeneral };
 }
 
 // === SUBMIT ASSESSMENT (finalize → download → sync → home) ===
