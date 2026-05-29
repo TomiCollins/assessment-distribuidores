@@ -7,11 +7,61 @@
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <header class="header">
-    <div class="header-brand">
-      <h1>Assessment de Distribuidores</h1>
+  <!-- LOGIN OVERLAY -->
+  <div class="overlay" id="login-overlay">
+    <div class="login-card">
+      <h2>Assessment de Distribuidores</h2>
+      <p>Iniciá sesión para continuar</p>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" required placeholder="tu.email@bayer.com">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Contraseña</label>
+          <input type="password" id="login-password" required placeholder="Tu contraseña">
+        </div>
+        <button type="submit" class="btn-primary btn-full-width" id="login-btn">Iniciar Sesión</button>
+      </form>
+      <button class="btn-link" onclick="handlePasswordReset()">¿Olvidaste tu contraseña?</button>
+      <div class="login-status" id="login-status"></div>
+    </div>
+  </div>
+
+  <!-- HOME / DASHBOARD -->
+  <div id="home-view" style="display:none">
+    <div class="home-container">
+      <div class="home-header">
+        <h2>Mis Assessments</h2>
+        <div class="home-user-actions">
+          <span class="user-email" id="user-email-display"></span>
+          <button class="btn-secondary btn-sm" onclick="handleLogout()">Cerrar Sesión</button>
+        </div>
+      </div>
+      <button class="btn-primary btn-new-assessment" onclick="startNewAssessment()">+ Nuevo Assessment</button>
+
+      <div class="assessments-section" id="assessments-en-progreso">
+        <h3>En progreso</h3>
+        <div class="assessment-cards" id="cards-en-progreso"></div>
+      </div>
+
+      <div class="assessments-section" id="assessments-completados">
+        <h3>Completados</h3>
+        <div class="assessment-cards" id="cards-completados"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WIZARD HEADER -->
+  <header class="header" id="wizard-header" style="display:none">
+    <div class="header-top">
+      <button class="btn-back-home" onclick="goBackToHome()" title="Volver al inicio">← Inicio</button>
+      <div class="header-brand">
+        <h1>Assessment de Distribuidores</h1>
+      </div>
     </div>
     <div class="progress-bar">
       <div class="progress-step active" data-step="1">
@@ -33,32 +83,15 @@
     </div>
   </header>
 
-  <!-- WELCOME / IDENTIFY SCREEN -->
-  <div class="overlay" id="welcome-overlay">
-    <div class="welcome-card">
-      <h2>Assessment de Distribuidores</h2>
-      <p>Ingresá tu nombre para comenzar un nuevo assessment o retomar uno guardado.</p>
-      <div class="form-group">
-        <label for="vendedor_nombre">Tu nombre (vendedor) *</label>
-        <input type="text" id="vendedor_nombre" placeholder="Ej: Juan Pérez">
-      </div>
-      <div class="welcome-actions">
-        <button class="btn-primary" onclick="startNew()">Comenzar Nuevo</button>
-        <button class="btn-secondary" onclick="loadDraft()">Cargar Borrador desde Archivo</button>
-      </div>
-      <div class="welcome-status" id="welcome-status"></div>
-    </div>
-  </div>
-
-  <main class="main-content">
-    <button class="info-help-btn hidden" id="info-help-btn" onclick="showBanner()" title="¿Cómo guardar tu avance?">?</button>
+  <main class="main-content" id="wizard-content" style="display:none">
+    <button class="info-help-btn hidden" id="info-help-btn" onclick="showBanner()" title="¿Cómo funciona?">?</button>
     <div class="info-banner" id="info-banner">
       <button class="info-banner-close" onclick="dismissBanner()">&times;</button>
-      <strong>¿Cómo guardar tu avance?</strong>
+      <strong>¿Cómo funciona?</strong>
       <ul>
-        <li>Usá el botón <strong>"Guardar Borrador"</strong> (abajo) para descargar un archivo con tu progreso.</li>
-        <li>Cuando vuelvas a entrar, hacé click en <strong>"Cargar Borrador desde Archivo"</strong> y seleccioná ese archivo para retomar donde dejaste.</li>
-        <li>Si usás siempre el mismo navegador y dispositivo, tu avance se guarda automáticamente. Pero te recomendamos descargar el borrador como respaldo por si se borra el historial.</li>
+        <li>Tu progreso se guarda automáticamente en la nube mientras completás el formulario.</li>
+        <li>Podés cerrar la página y volver en cualquier momento — tu assessment aparecerá en "En progreso".</li>
+        <li>Usá el botón <strong>"Guardar Borrador"</strong> (abajo) para guardar explícitamente tu avance.</li>
       </ul>
     </div>
 
@@ -66,21 +99,31 @@
     <section class="step-panel active" id="step-1">
       <h2>Datos Generales</h2>
       <div class="form-grid">
-        <div class="form-group">
-          <label for="nombre_distribuidor">Nombre del Distribuidor *</label>
-          <input type="text" id="nombre_distribuidor" required>
+        <div class="form-group autocomplete-wrapper">
+          <label for="nombre_distribuidor">Razón Social *</label>
+          <input type="text" id="nombre_distribuidor" required autocomplete="off" placeholder="Escribí las primeras letras...">
+          <div class="autocomplete-list" id="autocomplete-list"></div>
         </div>
         <div class="form-group">
-          <label for="region">Región *</label>
-          <input type="text" id="region" required>
+          <label for="cuit">CUIT</label>
+          <input type="text" id="cuit" readonly>
+        </div>
+        <div class="form-group">
+          <label for="region">BU *</label>
+          <input type="text" id="region" required readonly>
         </div>
         <div class="form-group">
           <label for="squad">Squad *</label>
-          <input type="text" id="squad" required>
+          <input type="text" id="squad" required readonly>
         </div>
-        <div class="form-group">
-          <label for="zonas_atendidas">Zonas Atendidas</label>
-          <input type="text" id="zonas_atendidas">
+        <div class="form-group form-group-full">
+          <label>Zonas Atendidas</label>
+          <div id="zonas-container">
+            <div class="zona-row">
+              <input type="text" class="zona-input" placeholder="Zona atendida">
+            </div>
+          </div>
+          <button type="button" class="btn-add-zona" onclick="addZona()">+ Agregar zona</button>
         </div>
         <div class="form-group">
           <label for="fecha">Fecha *</label>
@@ -97,7 +140,7 @@
         <h3>Performance</h3>
         <div class="form-grid">
           <div class="form-group">
-            <label for="facturacion_total">Facturación total 2024 (MM)</label>
+            <label for="facturacion_total">Facturación total 2025 (USD)</label>
             <input type="number" id="facturacion_total" step="any">
           </div>
           <div class="form-group">
@@ -105,7 +148,7 @@
             <input type="number" id="representatividad_bayer" step="any" min="0" max="100">
           </div>
           <div class="form-group">
-            <label for="facturacion_bayer">Facturación total Bayer 2024</label>
+            <label for="facturacion_bayer">Facturación total Agrobayer 2025 (USD)</label>
             <input type="number" id="facturacion_bayer" step="any">
           </div>
         </div>
@@ -115,86 +158,77 @@
         <h3>Proveedores</h3>
         <div class="form-grid">
           <div class="form-group">
-            <label for="num_proveedores">Número total de proveedores</label>
-            <input type="number" id="num_proveedores" min="0">
-          </div>
-          <div class="form-group">
-            <label for="num_skus">Número total de SKUs (todos proveedores)</label>
-            <input type="number" id="num_skus" min="0">
+            <label for="num_proveedores">Cantidad de proveedores *</label>
+            <input type="number" id="num_proveedores" min="0" required onchange="toggleProveedoresTable()">
           </div>
         </div>
-        <h4>Principales Proveedores</h4>
-        <table class="data-table" id="proveedores-table">
-          <thead>
-            <tr>
-              <th>Proveedor</th>
-              <th>% de ventas</th>
-              <th># SKUs</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
-            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
-            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
-            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
-            <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td></tr>
-          </tbody>
-        </table>
+        <div id="proveedores-section">
+          <h4>Principales Proveedores</h4>
+          <table class="data-table" id="proveedores-table">
+            <thead>
+              <tr>
+                <th>Proveedor</th>
+                <th>% de ventas</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+            </tbody>
+          </table>
+          <button type="button" class="btn-secondary" onclick="addProveedorRow()">+ Agregar proveedor</button>
+        </div>
       </div>
 
       <div class="section-block">
-        <h3>Clientes / Área</h3>
+        <h3>Clientes</h3>
         <div class="form-grid">
           <div class="form-group">
-            <label for="total_clientes"># total de clientes que atiende</label>
+            <label for="total_clientes">Cantidad total de clientes que atiende</label>
             <input type="number" id="total_clientes" min="0">
           </div>
           <div class="form-group">
-            <label for="clientes_bayer"># total de clientes que atiende con Bayer</label>
+            <label for="clientes_bayer">Cantidad total de clientes que atiende con Bayer</label>
             <input type="number" id="clientes_bayer" min="0">
           </div>
         </div>
       </div>
 
       <div class="section-block">
-        <h3>Porte - Empleados</h3>
+        <h3>Empleados</h3>
         <div class="form-grid">
           <div class="form-group">
-            <label for="empleados_total"># de Empleados Total</label>
-            <input type="number" id="empleados_total" min="0">
-          </div>
-          <div class="form-group">
-            <label for="empleados_admin">Administrativo (financiero, RH, marketing, TI, etc)</label>
-            <input type="number" id="empleados_admin" min="0">
-          </div>
-          <div class="form-group">
-            <label for="empleados_asesores">Comercial - asesores agronómicos</label>
-            <input type="number" id="empleados_asesores" min="0">
-          </div>
-          <div class="form-group">
-            <label for="empleados_gerentes">Comercial - gerentes/supervisores</label>
+            <label for="empleados_gerentes">Cantidad Gerentes</label>
             <input type="number" id="empleados_gerentes" min="0">
           </div>
           <div class="form-group">
-            <label for="empleados_comercial_otros">Comercial - Otros</label>
-            <input type="number" id="empleados_comercial_otros" min="0">
+            <label for="empleados_admin">Cantidad Administrativos</label>
+            <input type="number" id="empleados_admin" min="0">
           </div>
           <div class="form-group">
-            <label for="empleados_otras_areas">Otras áreas</label>
-            <input type="number" id="empleados_otras_areas" min="0">
+            <label for="empleados_asesores">Cantidad Asesores</label>
+            <input type="number" id="empleados_asesores" min="0">
           </div>
         </div>
+        <h4>Otras áreas</h4>
+        <div id="otras-areas-container">
+        </div>
+        <button type="button" class="btn-secondary" onclick="addOtraArea()">+ Agregar área</button>
       </div>
 
       <div class="section-block">
         <h3>Flota - Cantidad de vehículos</h3>
         <div class="form-grid">
           <div class="form-group">
-            <label for="vehiculos_propios"># Vehículos Propios</label>
+            <label for="vehiculos_propios">Cantidad Vehículos Propios</label>
             <input type="number" id="vehiculos_propios" min="0">
           </div>
           <div class="form-group">
-            <label for="vehiculos_terceros"># Vehículos de Terceros</label>
+            <label for="vehiculos_terceros">Cantidad Vehículos de Terceros</label>
             <input type="number" id="vehiculos_terceros" min="0">
           </div>
         </div>
@@ -207,7 +241,8 @@
             <tr>
               <th>Dirección</th>
               <th>Tamaño (m²)</th>
-              <th># de Empleados Depósito</th>
+              <th>Cantidad de Empleados</th>
+              <th>Horario de Atención</th>
               <th></th>
             </tr>
           </thead>
@@ -216,11 +251,42 @@
               <td><input type="text"></td>
               <td><input type="number" step="any"></td>
               <td><input type="number"></td>
+              <td><input type="text" placeholder="Ej: Lun-Vie 8 a 17"></td>
               <td><button type="button" class="btn-remove-row" onclick="removeDepositRow(this)">✕</button></td>
             </tr>
           </tbody>
         </table>
         <button type="button" class="btn-secondary" onclick="addDepositRow()">+ Agregar depósito</button>
+      </div>
+
+      <div class="section-block">
+        <h3>Puntos de Venta</h3>
+        <table class="data-table" id="puntos-venta-table">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Dirección</th>
+              <th>Cantidad de Empleados</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <select>
+                  <option value="">Seleccionar...</option>
+                  <option value="Casa Central">Casa Central</option>
+                  <option value="Punto de Venta">Punto de Venta</option>
+                  <option value="Casa Central y Punto de Venta">Casa Central y Punto de Venta</option>
+                </select>
+              </td>
+              <td><input type="text"></td>
+              <td><input type="number" min="0"></td>
+              <td><button type="button" class="btn-remove-row" onclick="removePuntoVentaRow(this)">✕</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <button type="button" class="btn-secondary" onclick="addPuntoVentaRow()">+ Agregar punto de venta</button>
       </div>
     </section>
 
@@ -255,17 +321,16 @@
         </div>
       </div>
       <div class="results-actions">
-        <button type="button" class="btn-secondary" onclick="exportExcel()">Descargar Excel</button>
         <button type="button" class="btn-primary" onclick="submitAssessment()">Finalizar y Descargar Assessment</button>
       </div>
       <div class="submit-status" id="submit-status"></div>
     </section>
   </main>
 
-  <footer class="footer">
+  <footer class="footer" id="wizard-footer" style="display:none">
     <div class="nav-buttons">
       <button type="button" class="btn-secondary" id="btn-prev" onclick="prevStep()" disabled>← Anterior</button>
-      <button type="button" class="btn-save-draft" onclick="saveDraft()">💾 Guardar Borrador</button>
+      <button type="button" class="btn-save-draft" onclick="saveDraft()">Guardar Borrador</button>
       <button type="button" class="btn-primary" id="btn-next" onclick="nextStep()">Siguiente →</button>
     </div>
   </footer>

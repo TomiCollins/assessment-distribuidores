@@ -1,5 +1,9 @@
-// No external services needed - drafts are saved/loaded as local files
+// === SUPABASE CONFIG ===
+const SUPABASE_URL = 'https://olkqjragrvnneubzgqjd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sa3FqcmFncnZubmV1YnpncWpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMzE5MjksImV4cCI6MjA5NTYwNzkyOX0.5bj_dqxidWfdml0fOS0hAOr_6512XT5MOcJY9T6pu0E';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// === STATE ===
 let state = {
   currentStep: 1,
   currentCategory: 0,
@@ -8,45 +12,509 @@ let state = {
   vendedorNombre: ''
 };
 
+let currentUser = null;
+let currentAssessmentId = null;
+let syncTimer = null;
+
 // === INITIALIZATION ===
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('fecha').valueAsDate = new Date();
-  loadFromStorage();
-  renderCategoryTabs();
-  renderQuestions(0);
-  updateNavButtons();
+  initApp();
 });
 
-// === LOCAL STORAGE ===
+async function initApp() {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session) {
+    currentUser = session.user;
+    showHome();
+  } else {
+    showLogin();
+  }
+
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      showLogin();
+    }
+    if (event === 'SIGNED_IN' && session) {
+      currentUser = session.user;
+    }
+  });
+}
+
+// === AUTH FUNCTIONS ===
+function showLogin() {
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('home-view').style.display = 'none';
+  document.getElementById('wizard-header').style.display = 'none';
+  document.getElementById('wizard-content').style.display = 'none';
+  document.getElementById('wizard-footer').style.display = 'none';
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const statusEl = document.getElementById('login-status');
+
+  statusEl.textContent = 'Iniciando sesión...';
+  statusEl.className = 'login-status loading';
+  document.getElementById('login-btn').disabled = true;
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  document.getElementById('login-btn').disabled = false;
+
+  if (error) {
+    statusEl.textContent = 'Email o contraseña incorrectos.';
+    statusEl.className = 'login-status error';
+    return;
+  }
+
+  currentUser = data.user;
+  statusEl.className = 'login-status';
+  showHome();
+}
+
+async function handleLogout() {
+  await supabaseClient.auth.signOut();
+  currentUser = null;
+  currentAssessmentId = null;
+  showLogin();
+}
+
+async function handlePasswordReset() {
+  const email = document.getElementById('login-email').value.trim();
+  const statusEl = document.getElementById('login-status');
+
+  if (!email) {
+    statusEl.textContent = 'Ingresá tu email arriba para recibir el link de recuperación.';
+    statusEl.className = 'login-status error';
+    return;
+  }
+
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+  if (error) {
+    statusEl.textContent = 'No se pudo enviar el email. Verificá la dirección.';
+    statusEl.className = 'login-status error';
+  } else {
+    statusEl.textContent = 'Se envió un email con instrucciones para restablecer tu contraseña.';
+    statusEl.className = 'login-status success';
+  }
+}
+
+// === HOME / DASHBOARD ===
+async function showHome() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('home-view').style.display = 'block';
+  document.getElementById('wizard-header').style.display = 'none';
+  document.getElementById('wizard-content').style.display = 'none';
+  document.getElementById('wizard-footer').style.display = 'none';
+
+  document.getElementById('user-email-display').textContent = currentUser?.email || '';
+  await loadAssessmentsList();
+}
+
+async function loadAssessmentsList() {
+  const { data, error } = await supabaseClient
+    .from('assessments')
+    .select('id, status, nombre_distribuidor, fecha, vendedor, updated_at')
+    .eq('user_id', currentUser.id)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    document.getElementById('cards-en-progreso').innerHTML = '<div class="home-empty-state">Error al cargar assessments.</div>';
+    return;
+  }
+
+  const borradores = data.filter(a => a.status === 'borrador');
+  const completados = data.filter(a => a.status === 'completado');
+
+  renderAssessmentCards(borradores, 'cards-en-progreso', 'borrador');
+  renderAssessmentCards(completados, 'cards-completados', 'completado');
+}
+
+function renderAssessmentCards(assessments, containerId, status) {
+  const container = document.getElementById(containerId);
+
+  if (assessments.length === 0) {
+    container.innerHTML = `<div class="home-empty-state">${
+      status === 'borrador' ? 'No tenés assessments en progreso.' : 'Todavía no finalizaste ningún assessment.'
+    }</div>`;
+    return;
+  }
+
+  container.innerHTML = assessments.map(a => {
+    const fecha = a.fecha ? new Date(a.fecha).toLocaleDateString('es-AR') : 'Sin fecha';
+    const updated = new Date(a.updated_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+    const actions = status === 'borrador'
+      ? `<button class="btn-card-primary" onclick="openAssessment('${a.id}')">Continuar</button>
+         <button class="btn-card-danger" onclick="deleteAssessment('${a.id}')">Eliminar</button>`
+      : `<button class="btn-card-primary" onclick="viewCompletedAssessment('${a.id}')">Ver</button>
+         <button class="btn-card-secondary" onclick="downloadExcelFromCloud('${a.id}')">Descargar Excel</button>`;
+
+    return `
+      <div class="assessment-card status-${status}">
+        <div class="card-distribuidor">${a.nombre_distribuidor || 'Sin distribuidor'}</div>
+        <div class="card-meta">Fecha: ${fecha} · Actualizado: ${updated}</div>
+        <div class="card-status">${status === 'borrador' ? 'En progreso' : 'Completado'}</div>
+        <div class="card-actions">${actions}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// === ASSESSMENT CRUD ===
+function startNewAssessment() {
+  currentAssessmentId = crypto.randomUUID();
+  state = { currentStep: 1, currentCategory: 0, answers: {}, chartInstance: null, vendedorNombre: currentUser?.email || '' };
+  showWizard();
+  resetWizardForm();
+  initWizard();
+}
+
+async function openAssessment(id) {
+  const { data, error } = await supabaseClient.from('assessments').select('*').eq('id', id).single();
+  if (error || !data) {
+    showToast('No se pudo cargar el assessment.');
+    return;
+  }
+
+  currentAssessmentId = id;
+  const payload = data.payload || {};
+  state.answers = payload.answers || {};
+  state.vendedorNombre = data.vendedor || currentUser?.email || '';
+  state.currentStep = payload.currentStep || 1;
+  state.currentCategory = payload.currentCategory || 0;
+
+  showWizard();
+  restoreFromPayload(payload);
+  initWizard();
+  goToStep(state.currentStep);
+}
+
+async function viewCompletedAssessment(id) {
+  const { data, error } = await supabaseClient.from('assessments').select('*').eq('id', id).single();
+  if (error || !data) {
+    showToast('No se pudo cargar el assessment.');
+    return;
+  }
+
+  currentAssessmentId = id;
+  const payload = data.payload || {};
+  state.answers = payload.answers || {};
+  state.vendedorNombre = data.vendedor || '';
+  state.currentStep = 4;
+  state.currentCategory = 0;
+
+  showWizard();
+  restoreFromPayload(payload);
+  initWizard();
+  goToStep(4);
+}
+
+async function downloadExcelFromCloud(id) {
+  const { data, error } = await supabaseClient.from('assessments').select('*').eq('id', id).single();
+  if (error || !data) {
+    showToast('No se pudo cargar el assessment.');
+    return;
+  }
+
+  const payload = data.payload || {};
+  state.answers = payload.answers || {};
+  state.vendedorNombre = data.vendedor || '';
+
+  const savedDatos = getDatosValues();
+  if (payload.datos) {
+    Object.entries(payload.datos).forEach(([key, val]) => {
+      if (key === 'zonas_atendidas') return;
+      const el = document.getElementById(key);
+      if (el && val) el.value = val;
+    });
+  }
+
+  await exportExcel();
+
+  Object.entries(savedDatos).forEach(([key, val]) => {
+    if (key === 'zonas_atendidas') return;
+    const el = document.getElementById(key);
+    if (el) el.value = val || '';
+  });
+}
+
+async function deleteAssessment(id) {
+  if (!confirm('¿Estás seguro de que querés eliminar este assessment?')) return;
+
+  const { error } = await supabaseClient.from('assessments').delete().eq('id', id);
+  if (error) {
+    showToast('No se pudo eliminar.');
+    return;
+  }
+
+  const storageKey = `assessment_${currentUser.id}_${id}`;
+  localStorage.removeItem(storageKey);
+  showToast('Assessment eliminado.');
+  await loadAssessmentsList();
+}
+
+// === WIZARD DISPLAY ===
+function showWizard() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('home-view').style.display = 'none';
+  document.getElementById('wizard-header').style.display = 'block';
+  document.getElementById('wizard-content').style.display = 'block';
+  document.getElementById('wizard-footer').style.display = 'block';
+}
+
+function initWizard() {
+  document.getElementById('fecha').valueAsDate = document.getElementById('fecha').valueAsDate || new Date();
+  renderCategoryTabs();
+  renderQuestions(state.currentCategory);
+  updateNavButtons();
+  initAutocomplete();
+  toggleProveedoresTable();
+}
+
+function resetWizardForm() {
+  document.getElementById('nombre_distribuidor').value = '';
+  document.getElementById('cuit').value = '';
+  document.getElementById('region').value = '';
+  document.getElementById('squad').value = '';
+  document.getElementById('fecha').valueAsDate = new Date();
+  const zonasContainer = document.getElementById('zonas-container');
+  zonasContainer.innerHTML = '<div class="zona-row"><input type="text" class="zona-input" placeholder="Zona atendida"></div>';
+
+  ['facturacion_total', 'representatividad_bayer', 'facturacion_bayer',
+    'num_proveedores', 'total_clientes', 'clientes_bayer',
+    'empleados_admin', 'empleados_asesores', 'empleados_gerentes',
+    'vehiculos_propios', 'vehiculos_terceros'].forEach(f => {
+    const el = document.getElementById(f);
+    if (el) el.value = '';
+  });
+
+  document.querySelector('#proveedores-table tbody').innerHTML = `
+    <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+    <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+    <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+  `;
+  document.querySelector('#depositos-table tbody').innerHTML = `
+    <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><input type="number"></td><td><input type="text" placeholder="Ej: Lun-Vie 8 a 17"></td><td><button type="button" class="btn-remove-row" onclick="removeDepositRow(this)">✕</button></td></tr>
+  `;
+  document.querySelector('#puntos-venta-table tbody').innerHTML = `
+    <tr><td><select><option value="">Seleccionar...</option><option value="Casa Central">Casa Central</option><option value="Punto de Venta">Punto de Venta</option><option value="Casa Central y Punto de Venta">Casa Central y Punto de Venta</option></select></td><td><input type="text"></td><td><input type="number" min="0"></td><td><button type="button" class="btn-remove-row" onclick="removePuntoVentaRow(this)">✕</button></td></tr>
+  `;
+  document.getElementById('otras-areas-container').innerHTML = '';
+
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('step-1').classList.add('active');
+}
+
+function restoreFromPayload(payload) {
+  if (payload.datos) {
+    Object.entries(payload.datos).forEach(([key, val]) => {
+      if (key === 'zonas_atendidas') return;
+      const el = document.getElementById(key);
+      if (el && val) el.value = val;
+    });
+    if (payload.datos.zonas_atendidas && Array.isArray(payload.datos.zonas_atendidas)) {
+      restoreZonas(payload.datos.zonas_atendidas);
+    }
+  }
+  if (payload.porte) restorePorteValues(payload.porte);
+  if (payload.answers) state.answers = payload.answers;
+}
+
+async function goBackToHome() {
+  if (currentAssessmentId) {
+    clearTimeout(syncTimer);
+    await syncToSupabase();
+  }
+  currentAssessmentId = null;
+  state = { currentStep: 1, currentCategory: 0, answers: {}, chartInstance: null, vendedorNombre: '' };
+  showHome();
+}
+
+// === AUTOCOMPLETE DISTRIBUIDOR ===
+function initAutocomplete() {
+  const input = document.getElementById('nombre_distribuidor');
+  const list = document.getElementById('autocomplete-list');
+  let activeIndex = -1;
+
+  input.removeEventListener('input', input._autocompleteHandler);
+  input._autocompleteHandler = () => {
+    const val = input.value.trim().toLowerCase();
+    list.innerHTML = '';
+    activeIndex = -1;
+    if (val.length < 2) { list.classList.remove('visible'); return; }
+
+    const matches = DISTRIBUIDORES.filter(d => d.razonSocial.toLowerCase().includes(val));
+    if (matches.length === 0) { list.classList.remove('visible'); return; }
+
+    matches.slice(0, 10).forEach((d, i) => {
+      const item = document.createElement('div');
+      item.className = 'autocomplete-item';
+      item.textContent = d.razonSocial;
+      item.addEventListener('click', () => selectDistribuidor(d));
+      list.appendChild(item);
+    });
+    list.classList.add('visible');
+  };
+  input.addEventListener('input', input._autocompleteHandler);
+
+  input.removeEventListener('keydown', input._autocompleteKeyHandler);
+  input._autocompleteKeyHandler = (e) => {
+    const items = list.querySelectorAll('.autocomplete-item');
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, items.length - 1);
+      items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && items[activeIndex]) {
+        const match = DISTRIBUIDORES.find(d => d.razonSocial === items[activeIndex].textContent);
+        if (match) selectDistribuidor(match);
+      }
+    }
+  };
+  input.addEventListener('keydown', input._autocompleteKeyHandler);
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.autocomplete-wrapper')) {
+      list.classList.remove('visible');
+    }
+  });
+}
+
+function selectDistribuidor(dist) {
+  document.getElementById('nombre_distribuidor').value = dist.razonSocial;
+  document.getElementById('cuit').value = dist.cuit;
+  document.getElementById('region').value = dist.bu;
+  document.getElementById('squad').value = dist.squad;
+  document.getElementById('autocomplete-list').classList.remove('visible');
+  saveToStorage();
+}
+
+// === ZONAS ATENDIDAS ===
+function addZona() {
+  const container = document.getElementById('zonas-container');
+  const row = document.createElement('div');
+  row.className = 'zona-row';
+  row.innerHTML = `
+    <input type="text" class="zona-input" placeholder="Zona atendida">
+    <button type="button" class="btn-remove-zona" onclick="removeZona(this)">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function removeZona(btn) {
+  const container = document.getElementById('zonas-container');
+  if (container.children.length > 1) {
+    btn.closest('.zona-row').remove();
+  }
+}
+
+function getZonasValues() {
+  return Array.from(document.querySelectorAll('.zona-input'))
+    .map(input => input.value.trim())
+    .filter(v => v);
+}
+
+function restoreZonas(zonas) {
+  const container = document.getElementById('zonas-container');
+  container.innerHTML = '';
+  if (zonas.length === 0) zonas = [''];
+  zonas.forEach((z, i) => {
+    const row = document.createElement('div');
+    row.className = 'zona-row';
+    row.innerHTML = `
+      <input type="text" class="zona-input" placeholder="Zona atendida" value="${z}">
+      ${i > 0 ? '<button type="button" class="btn-remove-zona" onclick="removeZona(this)">✕</button>' : ''}
+    `;
+    container.appendChild(row);
+  });
+}
+
+// === LOCAL STORAGE (scoped per user + assessment) ===
+function getStorageKey() {
+  if (!currentUser || !currentAssessmentId) return null;
+  return `assessment_${currentUser.id}_${currentAssessmentId}`;
+}
+
 function saveToStorage() {
+  const key = getStorageKey();
+  if (!key) return;
   const data = {
     datos: getDatosValues(),
     porte: getPorteValues(),
-    answers: state.answers
+    answers: state.answers,
+    timestamp: Date.now()
   };
-  localStorage.setItem('assessment_progress', JSON.stringify(data));
+  localStorage.setItem(key, JSON.stringify(data));
+  debouncedSync();
 }
 
 function loadFromStorage() {
-  const saved = localStorage.getItem('assessment_progress');
+  const key = getStorageKey();
+  if (!key) return;
+  const saved = localStorage.getItem(key);
   if (!saved) return;
   try {
     const data = JSON.parse(saved);
     if (data.datos) {
       Object.entries(data.datos).forEach(([key, val]) => {
+        if (key === 'zonas_atendidas') return;
         const el = document.getElementById(key);
         if (el && val) el.value = val;
       });
+      if (data.datos.zonas_atendidas && Array.isArray(data.datos.zonas_atendidas)) {
+        restoreZonas(data.datos.zonas_atendidas);
+      }
     }
     if (data.porte) restorePorteValues(data.porte);
     if (data.answers) state.answers = data.answers;
   } catch(e) { /* ignore corrupt data */ }
 }
 
-function clearStorage() {
-  if (confirm('¿Estás seguro de que querés borrar todo el progreso?')) {
-    localStorage.removeItem('assessment_progress');
-    location.reload();
+// === SUPABASE SYNC ===
+function debouncedSync() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => syncToSupabase(), 10000);
+}
+
+async function syncToSupabase() {
+  if (!currentUser || !currentAssessmentId) return;
+
+  const datos = getDatosValues();
+  const porte = getPorteValues();
+  const payload = {
+    datos,
+    porte,
+    answers: state.answers,
+    currentStep: state.currentStep,
+    currentCategory: state.currentCategory,
+    vendedor: state.vendedorNombre
+  };
+
+  const { error } = await supabaseClient.from('assessments').upsert({
+    id: currentAssessmentId,
+    user_id: currentUser.id,
+    status: 'borrador',
+    nombre_distribuidor: datos.nombre_distribuidor || null,
+    cuit: datos.cuit || null,
+    bu: datos.region || null,
+    squad: datos.squad || null,
+    fecha: datos.fecha || null,
+    vendedor: state.vendedorNombre || null,
+    payload: payload
+  });
+
+  if (!error) {
+    showToast('Guardado en la nube');
   }
 }
 
@@ -108,7 +576,7 @@ function renderCategoryTabs() {
   const container = document.getElementById('category-tabs');
   container.innerHTML = ASSESSMENT_DATA.categories.map((cat, i) => {
     const shortName = cat.name.length > 25 ? cat.name.substring(0, 22) + '...' : cat.name;
-    return `<div class="category-tab ${i === 0 ? 'active' : ''}" onclick="switchCategory(${i})" title="${cat.name}">${i + 1}. ${shortName}</div>`;
+    return `<div class="category-tab ${i === state.currentCategory ? 'active' : ''}" onclick="switchCategory(${i})" title="${cat.name}">${i + 1}. ${shortName}</div>`;
   }).join('');
 }
 
@@ -125,15 +593,26 @@ function switchCategory(index) {
 
 function updateTabStatus(tab, catIndex) {
   const cat = ASSESSMENT_DATA.categories[catIndex];
-  const answered = cat.questions.filter(q => state.answers[q.id]?.calificacion).length;
+  const answered = cat.questions.filter(q => isQuestionFullyAnswered(q)).length;
   tab.classList.remove('has-answers', 'complete');
   if (answered === cat.questions.length) tab.classList.add('complete');
   else if (answered > 0) tab.classList.add('has-answers');
 }
 
+function getSubQuestions(q) {
+  return q.pregunta.split('\n').map(s => s.trim()).filter(s => s);
+}
+
+function isQuestionFullyAnswered(q) {
+  const answer = state.answers[q.id];
+  if (!answer || !answer.sub) return false;
+  const subQs = getSubQuestions(q);
+  return subQs.every((_, i) => answer.sub[i]);
+}
+
 function renderQuestions(catIndex) {
   const cat = ASSESSMENT_DATA.categories[catIndex];
-  const answered = cat.questions.filter(q => state.answers[q.id]?.calificacion).length;
+  const answered = cat.questions.filter(q => isQuestionFullyAnswered(q)).length;
 
   document.getElementById('category-progress').innerHTML = `
     <span>${cat.name} — ${answered}/${cat.questions.length} respondidas (Peso: ${Math.round(cat.weightTotal * 100)}%)</span>
@@ -143,27 +622,39 @@ function renderQuestions(catIndex) {
   const container = document.getElementById('questions-container');
   container.innerHTML = cat.questions.map(q => {
     const answer = state.answers[q.id] || {};
-    const isAnswered = answer.calificacion ? 'answered' : '';
+    const subQs = getSubQuestions(q);
+    const isAnswered = isQuestionFullyAnswered(q) ? 'answered' : '';
+    const answeredCount = subQs.filter((_, i) => answer.sub?.[i]).length;
+
+    let subQuestionsHtml = subQs.map((sq, i) => {
+      const subVal = answer.sub?.[i] || '';
+      return `
+        <div class="sub-question">
+          <div class="sub-question-text">${sq}</div>
+          <div class="rating-options rating-options-inline">
+            <div class="rating-option bajo">
+              <input type="radio" name="q_${q.id}_${i}" id="q_${q.id}_${i}_bajo" value="bajo" ${subVal === 'bajo' ? 'checked' : ''} onchange="setSubAnswer('${q.id}', ${i}, 'bajo')">
+              <label for="q_${q.id}_${i}_bajo">Bajo - 0%</label>
+            </div>
+            <div class="rating-option mediano">
+              <input type="radio" name="q_${q.id}_${i}" id="q_${q.id}_${i}_mediano" value="mediano" ${subVal === 'mediano' ? 'checked' : ''} onchange="setSubAnswer('${q.id}', ${i}, 'mediano')">
+              <label for="q_${q.id}_${i}_mediano">Mediano - 50%</label>
+            </div>
+            <div class="rating-option alto">
+              <input type="radio" name="q_${q.id}_${i}" id="q_${q.id}_${i}_alto" value="alto" ${subVal === 'alto' ? 'checked' : ''} onchange="setSubAnswer('${q.id}', ${i}, 'alto')">
+              <label for="q_${q.id}_${i}_alto">Alto - 100%</label>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
     return `
       <div class="question-card ${isAnswered}" id="card-${q.id}">
         <div class="question-header">
           <span class="question-number">${q.id}</span>
           <span class="question-aspecto">${q.aspecto}</span>
-        </div>
-        <div class="question-text">${q.pregunta}</div>
-        <div class="rating-options">
-          <div class="rating-option bajo">
-            <input type="radio" name="q_${q.id}" id="q_${q.id}_bajo" value="bajo" ${answer.calificacion === 'bajo' ? 'checked' : ''} onchange="setAnswer('${q.id}', 'bajo')">
-            <label for="q_${q.id}_bajo">Bajo - 0%</label>
-          </div>
-          <div class="rating-option mediano">
-            <input type="radio" name="q_${q.id}" id="q_${q.id}_mediano" value="mediano" ${answer.calificacion === 'mediano' ? 'checked' : ''} onchange="setAnswer('${q.id}', 'mediano')">
-            <label for="q_${q.id}_mediano">Mediano - 50%</label>
-          </div>
-          <div class="rating-option alto">
-            <input type="radio" name="q_${q.id}" id="q_${q.id}_alto" value="alto" ${answer.calificacion === 'alto' ? 'checked' : ''} onchange="setAnswer('${q.id}', 'alto')">
-            <label for="q_${q.id}_alto">Alto - 100%</label>
-          </div>
+          <span class="question-progress-badge">${answeredCount}/${subQs.length}</span>
         </div>
         <div class="level-descriptions">
           <button class="level-toggle" onclick="toggleDetails('${q.id}')">Ver criterios de evaluación</button>
@@ -171,11 +662,35 @@ function renderQuestions(catIndex) {
             ${renderLevelDetails(q)}
           </div>
         </div>
-        <div class="obs-label">Observaciones</div>
-        <textarea placeholder="Observaciones opcionales..." onblur="setObservation('${q.id}', this.value)">${answer.observaciones || ''}</textarea>
+        <div class="sub-questions-container">
+          ${subQuestionsHtml}
+        </div>
+        <div class="obs-label">Observaciones generales</div>
+        <textarea placeholder="Observaciones opcionales para esta sección..." onblur="setObservation('${q.id}', this.value)">${answer.observaciones || ''}</textarea>
       </div>
     `;
   }).join('');
+
+  const totalCats = ASSESSMENT_DATA.categories.length;
+  const prevDisabled = catIndex === 0 ? 'disabled' : '';
+  const nextLabel = catIndex === totalCats - 1 ? 'Ver Resultados →' : 'Siguiente Competencia →';
+  container.innerHTML += `
+    <div class="category-nav-buttons">
+      <button type="button" class="btn-secondary" ${prevDisabled} onclick="navCategory(-1)">← Competencia Anterior</button>
+      <button type="button" class="btn-primary" onclick="navCategory(1)">${nextLabel}</button>
+    </div>
+  `;
+}
+
+function navCategory(direction) {
+  const totalCats = ASSESSMENT_DATA.categories.length;
+  const newIndex = state.currentCategory + direction;
+  if (newIndex >= 0 && newIndex < totalCats) {
+    switchCategory(newIndex);
+    window.scrollTo(0, 0);
+  } else if (newIndex >= totalCats) {
+    nextStep();
+  }
 }
 
 function renderLevelDetails(q) {
@@ -197,10 +712,20 @@ function toggleDetails(qId) {
   el.classList.toggle('visible');
 }
 
-function setAnswer(qId, value) {
+function setSubAnswer(qId, subIndex, value) {
   if (!state.answers[qId]) state.answers[qId] = {};
-  state.answers[qId].calificacion = value;
-  document.getElementById(`card-${qId}`).classList.add('answered');
+  if (!state.answers[qId].sub) state.answers[qId].sub = {};
+  state.answers[qId].sub[subIndex] = value;
+
+  const q = ASSESSMENT_DATA.categories.flatMap(c => c.questions).find(q => q.id === qId);
+  if (q && isQuestionFullyAnswered(q)) {
+    document.getElementById(`card-${qId}`).classList.add('answered');
+  }
+  const subQs = getSubQuestions(q);
+  const answeredCount = subQs.filter((_, i) => state.answers[qId].sub[i]).length;
+  const badge = document.querySelector(`#card-${qId} .question-progress-badge`);
+  if (badge) badge.textContent = `${answeredCount}/${subQs.length}`;
+
   updateCategoryProgress();
   saveToStorage();
 }
@@ -213,7 +738,7 @@ function setObservation(qId, value) {
 
 function updateCategoryProgress() {
   const cat = ASSESSMENT_DATA.categories[state.currentCategory];
-  const answered = cat.questions.filter(q => state.answers[q.id]?.calificacion).length;
+  const answered = cat.questions.filter(q => isQuestionFullyAnswered(q)).length;
   const progressEl = document.getElementById('category-progress');
   progressEl.querySelector('span').textContent = `${cat.name} — ${answered}/${cat.questions.length} respondidas (Peso: ${Math.round(cat.weightTotal * 100)}%)`;
   progressEl.querySelector('.progress-fill-inner').style.width = `${(answered/cat.questions.length)*100}%`;
@@ -228,17 +753,29 @@ function getCalificacionValue(calificacion) {
   return 0;
 }
 
+function getQuestionAverage(q) {
+  const answer = state.answers[q.id];
+  if (!answer?.sub) return 0;
+  const subQs = getSubQuestions(q);
+  let sum = 0;
+  let count = 0;
+  subQs.forEach((_, i) => {
+    if (answer.sub[i]) {
+      sum += getCalificacionValue(answer.sub[i]);
+      count++;
+    }
+  });
+  return count > 0 ? sum / count : 0;
+}
+
 function calculateResults() {
   const results = ASSESSMENT_DATA.categories.map(cat => {
     let scoreSeccion = 0;
     let scoreTotal = 0;
     cat.questions.forEach(q => {
-      const answer = state.answers[q.id];
-      if (answer?.calificacion) {
-        const val = getCalificacionValue(answer.calificacion);
-        scoreSeccion += val * q.ponderacionCompetencia;
-        scoreTotal += val * q.ponderacionTotal;
-      }
+      const avg = getQuestionAverage(q);
+      scoreSeccion += avg * q.ponderacionCompetencia;
+      scoreTotal += avg * q.ponderacionTotal;
     });
     return {
       name: cat.name,
@@ -254,9 +791,9 @@ function calculateResults() {
 function renderResults() {
   const datos = getDatosValues();
   document.getElementById('results-header').innerHTML = `
-    <p><strong>Distribuidor:</strong> ${datos.nombre_distribuidor || '-'}</p>
-    <p><strong>Región:</strong> ${datos.region || '-'} | <strong>Squad:</strong> ${datos.squad || '-'}</p>
-    <p><strong>Zonas:</strong> ${datos.zonas_atendidas || '-'} | <strong>Fecha:</strong> ${datos.fecha || '-'}</p>
+    <p><strong>Distribuidor:</strong> ${datos.nombre_distribuidor || '-'} | <strong>CUIT:</strong> ${datos.cuit || '-'}</p>
+    <p><strong>BU:</strong> ${datos.region || '-'} | <strong>Squad:</strong> ${datos.squad || '-'}</p>
+    <p><strong>Zonas:</strong> ${Array.isArray(datos.zonas_atendidas) ? datos.zonas_atendidas.join(', ') : (datos.zonas_atendidas || '-')} | <strong>Fecha:</strong> ${datos.fecha || '-'}</p>
   `;
 
   const results = calculateResults();
@@ -331,7 +868,7 @@ function renderRadarChart(results) {
   });
 }
 
-// === CSV EXPORT ===
+// === EXCEL EXPORT ===
 async function exportExcel() {
   const datos = getDatosValues();
   const porte = getPorteValues();
@@ -356,11 +893,13 @@ async function exportExcel() {
   const datosHeader = wsDatos.addRow(['Campo', 'Valor']);
   datosHeader.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
 
+  const zonasStr = Array.isArray(datos.zonas_atendidas) ? datos.zonas_atendidas.join(', ') : (datos.zonas_atendidas || '');
   const datosFields = [
-    ['Nombre del Distribuidor', datos.nombre_distribuidor || ''],
-    ['Región', datos.region || ''],
+    ['Razón Social', datos.nombre_distribuidor || ''],
+    ['CUIT', datos.cuit || ''],
+    ['BU', datos.region || ''],
     ['Squad', datos.squad || ''],
-    ['Zonas Atendidas', datos.zonas_atendidas || ''],
+    ['Zonas Atendidas', zonasStr],
     ['Fecha', datos.fecha || ''],
     ['Vendedor', state.vendedorNombre || '']
   ];
@@ -388,90 +927,104 @@ async function exportExcel() {
   }
 
   addPorteSection('Performance', [
-    ['Facturación total 2024 (MM)', porte.facturacion_total || ''],
+    ['Facturación total 2025 (USD)', porte.facturacion_total || ''],
     ['% Representatividad Bayer', porte.representatividad_bayer || ''],
-    ['Facturación total Bayer 2024', porte.facturacion_bayer || '']
+    ['Facturación total Agrobayer 2025 (USD)', porte.facturacion_bayer || '']
   ]);
 
-  addPorteSection('Clientes / Área', [
-    ['Total de clientes', porte.total_clientes || ''],
-    ['Clientes con Bayer', porte.clientes_bayer || '']
+  addPorteSection('Clientes', [
+    ['Cantidad total de clientes', porte.total_clientes || ''],
+    ['Cantidad clientes con Bayer', porte.clientes_bayer || '']
   ]);
 
-  addPorteSection('Empleados', [
-    ['Empleados Total', porte.empleados_total || ''],
-    ['Administrativo', porte.empleados_admin || ''],
-    ['Asesores agronómicos', porte.empleados_asesores || ''],
-    ['Gerentes/supervisores', porte.empleados_gerentes || ''],
-    ['Comercial - Otros', porte.empleados_comercial_otros || ''],
-    ['Otras áreas', porte.empleados_otras_areas || '']
-  ]);
+  const empleadosFields = [
+    ['Cantidad Gerentes', porte.empleados_gerentes || ''],
+    ['Cantidad Administrativos', porte.empleados_admin || ''],
+    ['Cantidad Asesores', porte.empleados_asesores || '']
+  ];
+  if (porte.otras_areas && porte.otras_areas.length > 0) {
+    porte.otras_areas.forEach(a => {
+      empleadosFields.push([a.nombre || 'Otra área', a.cantidad || '']);
+    });
+  }
+  addPorteSection('Empleados', empleadosFields);
 
   addPorteSection('Flota', [
-    ['Vehículos Propios', porte.vehiculos_propios || ''],
-    ['Vehículos de Terceros', porte.vehiculos_terceros || '']
+    ['Cantidad Vehículos Propios', porte.vehiculos_propios || ''],
+    ['Cantidad Vehículos de Terceros', porte.vehiculos_terceros || '']
   ]);
 
-  // Proveedores
   const provTitle = wsPorte.addRow(['Proveedores']);
   provTitle.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF00824B' } };
   wsPorte.addRow([]);
-  wsPorte.addRow(['Nro. de proveedores: ' + (porte.num_proveedores || ''), 'Nro. de SKUs: ' + (porte.num_skus || '')]);
-  const provHdr = wsPorte.addRow(['Proveedor', '% Ventas', '# SKUs']);
+  wsPorte.addRow(['Cantidad de proveedores: ' + (porte.num_proveedores || '')]);
+  const provHdr = wsPorte.addRow(['Proveedor', '% Ventas']);
   provHdr.eachCell(cell => { cell.font = headerFont; cell.fill = subHeaderFill; cell.border = borders; });
   if (porte.proveedores && porte.proveedores.length > 0) {
     porte.proveedores.forEach(p => {
-      const r = wsPorte.addRow([p.nombre || '', p.pctVentas || '', p.skus || '']);
+      const r = wsPorte.addRow([p.nombre || '', p.pctVentas || '']);
       r.eachCell(cell => { cell.border = borders; });
     });
   }
   wsPorte.addRow([]);
 
-  // Depositos
   const depTitle = wsPorte.addRow(['Depósitos']);
   depTitle.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF00824B' } };
   wsPorte.addRow([]);
-  const depHdr = wsPorte.addRow(['Dirección', 'Tamaño (m²)', '# Empleados']);
+  const depHdr = wsPorte.addRow(['Dirección', 'Tamaño (m²)', 'Cantidad Empleados', 'Horario de Atención']);
   depHdr.eachCell(cell => { cell.font = headerFont; cell.fill = subHeaderFill; cell.border = borders; });
   if (porte.depositos && porte.depositos.length > 0) {
     porte.depositos.forEach(d => {
-      const r = wsPorte.addRow([d.direccion || '', d.tamanoM2 || '', d.empleados || '']);
+      const r = wsPorte.addRow([d.direccion || '', d.tamanoM2 || '', d.empleados || '', d.horario || '']);
+      r.eachCell(cell => { cell.border = borders; });
+    });
+  }
+  wsPorte.addRow([]);
+
+  const pvTitle = wsPorte.addRow(['Puntos de Venta']);
+  pvTitle.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF00824B' } };
+  wsPorte.addRow([]);
+  const pvHdr = wsPorte.addRow(['Tipo', 'Dirección', 'Cantidad Empleados']);
+  pvHdr.eachCell(cell => { cell.font = headerFont; cell.fill = subHeaderFill; cell.border = borders; });
+  if (porte.puntos_venta && porte.puntos_venta.length > 0) {
+    porte.puntos_venta.forEach(pv => {
+      const r = wsPorte.addRow([pv.tipo || '', pv.direccion || '', pv.empleados || '']);
       r.eachCell(cell => { cell.border = borders; });
     });
   }
 
   // --- SOLAPA 3: Assessment ---
   const wsAssess = wb.addWorksheet('Assessment');
-  wsAssess.columns = [{ width: 6 }, { width: 36 }, { width: 42 }, { width: 14 }, { width: 8 }, { width: 50 }];
+  wsAssess.columns = [{ width: 6 }, { width: 36 }, { width: 50 }, { width: 14 }, { width: 10 }, { width: 50 }];
 
-  const assessHdr = wsAssess.addRow(['#', 'Categoría', 'Aspecto', 'Calificación', 'Valor', 'Observaciones']);
+  const assessHdr = wsAssess.addRow(['#', 'Categoría / Aspecto', 'Pregunta', 'Puntuación', 'Valor', 'Observaciones']);
   assessHdr.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
 
-  let currentCat = '';
   ASSESSMENT_DATA.categories.forEach(cat => {
-    cat.questions.forEach((q, qi) => {
+    cat.questions.forEach(q => {
       const answer = state.answers[q.id] || {};
-      const calLabel = answer.calificacion ? (answer.calificacion === 'bajo' ? 'Bajo' : answer.calificacion === 'mediano' ? 'Mediano' : 'Alto') : '';
-      const val = answer.calificacion ? getCalificacionValue(answer.calificacion) : '';
-      const r = wsAssess.addRow([q.id, cat.name, q.aspecto, calLabel, val, answer.observaciones || '']);
-      r.eachCell(cell => { cell.border = borders; });
+      const subQs = getSubQuestions(q);
+      const avg = getQuestionAverage(q);
 
-      // Color-code the calificacion cell
-      if (answer.calificacion === 'bajo') {
-        r.getCell(4).font = { bold: true, color: { argb: 'FFE53935' } };
-      } else if (answer.calificacion === 'mediano') {
-        r.getCell(4).font = { bold: true, color: { argb: 'FFFB8C00' } };
-      } else if (answer.calificacion === 'alto') {
-        r.getCell(4).font = { bold: true, color: { argb: 'FF43A047' } };
-      }
-
-      // Alternate category background
-      if (cat.name !== currentCat) {
-        currentCat = cat.name;
-      }
+      const sectionRow = wsAssess.addRow([q.id, cat.name + ' — ' + q.aspecto, '', '', avg || '', answer.observaciones || '']);
+      sectionRow.getCell(1).font = { bold: true };
+      sectionRow.getCell(2).font = { bold: true };
+      sectionRow.getCell(5).numFmt = '0%';
+      sectionRow.eachCell(cell => { cell.border = borders; });
       if (ASSESSMENT_DATA.categories.indexOf(cat) % 2 === 0) {
-        r.getCell(2).fill = lightFill;
+        sectionRow.getCell(2).fill = lightFill;
       }
+
+      subQs.forEach((sq, i) => {
+        const subVal = answer.sub?.[i] || '';
+        const calLabel = subVal ? (subVal === 'bajo' ? 'Bajo' : subVal === 'mediano' ? 'Mediano' : 'Alto') : '';
+        const numVal = subVal ? getCalificacionValue(subVal) : '';
+        const r = wsAssess.addRow(['', '', sq, calLabel, numVal, '']);
+        r.eachCell(cell => { cell.border = borders; });
+        if (subVal === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' } };
+        else if (subVal === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' } };
+        else if (subVal === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' } };
+      });
     });
   });
 
@@ -483,7 +1036,7 @@ async function exportExcel() {
   resTitle.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF0068B4' } };
   wsRes.addRow([]);
 
-  const resInfo = wsRes.addRow(['Distribuidor: ' + (datos.nombre_distribuidor || ''), 'Fecha: ' + (datos.fecha || ''), '']);
+  const resInfo = wsRes.addRow(['Distribuidor: ' + (datos.nombre_distribuidor || ''), 'CUIT: ' + (datos.cuit || ''), 'Fecha: ' + (datos.fecha || '')]);
   resInfo.getCell(1).font = { bold: true };
   wsRes.addRow([]);
 
@@ -519,13 +1072,14 @@ async function exportExcel() {
   showToast('Excel descargado correctamente');
 }
 
-// === SUBMIT ASSESSMENT (download Excel + backup file + clear) ===
+// === SUBMIT ASSESSMENT (finalize → download → sync → home) ===
 async function submitAssessment() {
-  const totalAnswered = Object.values(state.answers).filter(a => a.calificacion).length;
   const totalQuestions = ASSESSMENT_DATA.categories.reduce((sum, c) => sum + c.questions.length, 0);
+  const totalAnswered = ASSESSMENT_DATA.categories.reduce((sum, c) =>
+    sum + c.questions.filter(q => isQuestionFullyAnswered(q)).length, 0);
 
   if (totalAnswered < totalQuestions) {
-    if (!confirm(`Hay ${totalQuestions - totalAnswered} preguntas sin responder. ¿Querés finalizar de todas formas?`)) return;
+    if (!confirm(`Hay ${totalQuestions - totalAnswered} secciones sin completar. ¿Querés finalizar de todas formas?`)) return;
   }
 
   const datos = getDatosValues();
@@ -538,7 +1092,7 @@ async function submitAssessment() {
   // 2. Download .assessment backup
   const payload = {
     status: "completado",
-    vendedor: state.vendedorNombre || datos.nombre_distribuidor || '',
+    vendedor: state.vendedorNombre || currentUser?.email || '',
     timestamp: new Date().toISOString(),
     datos,
     porte,
@@ -560,31 +1114,59 @@ async function submitAssessment() {
     URL.revokeObjectURL(url);
   }, 500);
 
-  // 3. Clear progress
-  localStorage.removeItem('assessment_progress');
+  // 3. Sync to Supabase as completed
+  if (currentUser && currentAssessmentId) {
+    await supabaseClient.from('assessments').upsert({
+      id: currentAssessmentId,
+      user_id: currentUser.id,
+      status: 'completado',
+      nombre_distribuidor: datos.nombre_distribuidor || null,
+      cuit: datos.cuit || null,
+      bu: datos.region || null,
+      squad: datos.squad || null,
+      fecha: datos.fecha || null,
+      vendedor: state.vendedorNombre || currentUser.email || null,
+      payload: payload
+    });
+  }
 
-  // 4. Show confirmation
-  const statusEl = document.getElementById('submit-status');
-  statusEl.className = 'submit-status success';
-  statusEl.textContent = 'Assessment finalizado. Se descargaron el Excel y el archivo de respaldo. Podés cerrar esta página.';
+  // 4. Clear localStorage for this assessment
+  const key = getStorageKey();
+  if (key) localStorage.removeItem(key);
+
+  // 5. Show confirmation and redirect to home
+  showToast('Assessment finalizado. Se descargaron el Excel y el archivo de respaldo.');
+  setTimeout(() => {
+    currentAssessmentId = null;
+    showHome();
+  }, 2000);
+}
+
+// === SAVE DRAFT (sync to Supabase immediately) ===
+async function saveDraft() {
+  saveToStorage();
+  clearTimeout(syncTimer);
+  await syncToSupabase();
+  showToast('Borrador guardado en la nube.');
 }
 
 // === HELPERS ===
 function getDatosValues() {
   return {
     nombre_distribuidor: document.getElementById('nombre_distribuidor')?.value || '',
+    cuit: document.getElementById('cuit')?.value || '',
     region: document.getElementById('region')?.value || '',
     squad: document.getElementById('squad')?.value || '',
-    zonas_atendidas: document.getElementById('zonas_atendidas')?.value || '',
+    zonas_atendidas: getZonasValues(),
     fecha: document.getElementById('fecha')?.value || ''
   };
 }
 
 function getPorteValues() {
   const fields = ['facturacion_total', 'representatividad_bayer', 'facturacion_bayer',
-    'num_proveedores', 'num_skus', 'total_clientes', 'clientes_bayer',
-    'empleados_total', 'empleados_admin', 'empleados_asesores', 'empleados_gerentes',
-    'empleados_comercial_otros', 'empleados_otras_areas', 'vehiculos_propios', 'vehiculos_terceros'];
+    'num_proveedores', 'total_clientes', 'clientes_bayer',
+    'empleados_admin', 'empleados_asesores', 'empleados_gerentes',
+    'vehiculos_propios', 'vehiculos_terceros'];
 
   const result = {};
   fields.forEach(f => {
@@ -592,20 +1174,28 @@ function getPorteValues() {
     result[f] = el ? el.value : '';
   });
 
-  // Proveedores table
   result.proveedores = [];
   document.querySelectorAll('#proveedores-table tbody tr').forEach(row => {
     const inputs = row.querySelectorAll('input');
     if (inputs[0]?.value) {
       result.proveedores.push({
         nombre: inputs[0].value,
-        pctVentas: inputs[1]?.value || '',
-        skus: inputs[2]?.value || ''
+        pctVentas: inputs[1]?.value || ''
       });
     }
   });
 
-  // Depositos table
+  result.otras_areas = [];
+  document.querySelectorAll('.otra-area-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    if (inputs[0]?.value) {
+      result.otras_areas.push({
+        nombre: inputs[0].value,
+        cantidad: inputs[1]?.value || ''
+      });
+    }
+  });
+
   result.depositos = [];
   document.querySelectorAll('#depositos-table tbody tr').forEach(row => {
     const inputs = row.querySelectorAll('input');
@@ -613,7 +1203,21 @@ function getPorteValues() {
       result.depositos.push({
         direccion: inputs[0].value,
         tamanoM2: inputs[1]?.value || '',
-        empleados: inputs[2]?.value || ''
+        empleados: inputs[2]?.value || '',
+        horario: inputs[3]?.value || ''
+      });
+    }
+  });
+
+  result.puntos_venta = [];
+  document.querySelectorAll('#puntos-venta-table tbody tr').forEach(row => {
+    const select = row.querySelector('select');
+    const inputs = row.querySelectorAll('input');
+    if (select?.value || inputs[0]?.value) {
+      result.puntos_venta.push({
+        tipo: select?.value || '',
+        direccion: inputs[0]?.value || '',
+        empleados: inputs[1]?.value || ''
       });
     }
   });
@@ -623,26 +1227,34 @@ function getPorteValues() {
 
 function restorePorteValues(porte) {
   const fields = ['facturacion_total', 'representatividad_bayer', 'facturacion_bayer',
-    'num_proveedores', 'num_skus', 'total_clientes', 'clientes_bayer',
-    'empleados_total', 'empleados_admin', 'empleados_asesores', 'empleados_gerentes',
-    'empleados_comercial_otros', 'empleados_otras_areas', 'vehiculos_propios', 'vehiculos_terceros'];
+    'num_proveedores', 'total_clientes', 'clientes_bayer',
+    'empleados_admin', 'empleados_asesores', 'empleados_gerentes',
+    'vehiculos_propios', 'vehiculos_terceros'];
 
   fields.forEach(f => {
     const el = document.getElementById(f);
     if (el && porte[f]) el.value = porte[f];
   });
 
-  if (porte.proveedores) {
-    const rows = document.querySelectorAll('#proveedores-table tbody tr');
-    porte.proveedores.forEach((p, i) => {
-      if (rows[i]) {
-        const inputs = rows[i].querySelectorAll('input');
-        inputs[0].value = p.nombre || '';
-        inputs[1].value = p.pctVentas || '';
-        inputs[2].value = p.skus || '';
-      }
+  if (porte.proveedores && porte.proveedores.length > 0) {
+    const tbody = document.querySelector('#proveedores-table tbody');
+    tbody.innerHTML = '';
+    porte.proveedores.forEach(p => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><input type="text" value="${p.nombre || ''}"></td>
+        <td><input type="number" step="any" value="${p.pctVentas || ''}"></td>
+        <td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td>
+      `;
+      tbody.appendChild(row);
     });
   }
+
+  if (porte.otras_areas && porte.otras_areas.length > 0) {
+    porte.otras_areas.forEach(a => addOtraArea(a.nombre, a.cantidad));
+  }
+
+  if (porte.num_proveedores) toggleProveedoresTable();
 
   if (porte.depositos) {
     const tbody = document.querySelector('#depositos-table tbody');
@@ -653,11 +1265,35 @@ function restorePorteValues(porte) {
         <td><input type="text" value="${d.direccion || ''}"></td>
         <td><input type="number" step="any" value="${d.tamanoM2 || ''}"></td>
         <td><input type="number" value="${d.empleados || ''}"></td>
+        <td><input type="text" placeholder="Ej: Lun-Vie 8 a 17" value="${d.horario || ''}"></td>
         <td><button type="button" class="btn-remove-row" onclick="removeDepositRow(this)">✕</button></td>
       `;
       tbody.appendChild(row);
     });
     if (porte.depositos.length === 0) addDepositRow();
+  }
+
+  if (porte.puntos_venta) {
+    const tbody = document.querySelector('#puntos-venta-table tbody');
+    tbody.innerHTML = '';
+    porte.puntos_venta.forEach(pv => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>
+          <select>
+            <option value="">Seleccionar...</option>
+            <option value="Casa Central" ${pv.tipo === 'Casa Central' ? 'selected' : ''}>Casa Central</option>
+            <option value="Punto de Venta" ${pv.tipo === 'Punto de Venta' ? 'selected' : ''}>Punto de Venta</option>
+            <option value="Casa Central y Punto de Venta" ${pv.tipo === 'Casa Central y Punto de Venta' ? 'selected' : ''}>Casa Central y Punto de Venta</option>
+          </select>
+        </td>
+        <td><input type="text" value="${pv.direccion || ''}"></td>
+        <td><input type="number" min="0" value="${pv.empleados || ''}"></td>
+        <td><button type="button" class="btn-remove-row" onclick="removePuntoVentaRow(this)">✕</button></td>
+      `;
+      tbody.appendChild(row);
+    });
+    if (porte.puntos_venta.length === 0) addPuntoVentaRow();
   }
 }
 
@@ -668,6 +1304,7 @@ function addDepositRow() {
     <td><input type="text"></td>
     <td><input type="number" step="any"></td>
     <td><input type="number"></td>
+    <td><input type="text" placeholder="Ej: Lun-Vie 8 a 17"></td>
     <td><button type="button" class="btn-remove-row" onclick="removeDepositRow(this)">✕</button></td>
   `;
   tbody.appendChild(row);
@@ -678,6 +1315,72 @@ function removeDepositRow(btn) {
   if (tbody.children.length > 1) {
     btn.closest('tr').remove();
   }
+}
+
+function addPuntoVentaRow() {
+  const tbody = document.querySelector('#puntos-venta-table tbody');
+  const row = document.createElement('tr');
+  row.innerHTML = `
+    <td>
+      <select>
+        <option value="">Seleccionar...</option>
+        <option value="Casa Central">Casa Central</option>
+        <option value="Punto de Venta">Punto de Venta</option>
+        <option value="Casa Central y Punto de Venta">Casa Central y Punto de Venta</option>
+      </select>
+    </td>
+    <td><input type="text"></td>
+    <td><input type="number" min="0"></td>
+    <td><button type="button" class="btn-remove-row" onclick="removePuntoVentaRow(this)">✕</button></td>
+  `;
+  tbody.appendChild(row);
+}
+
+function removePuntoVentaRow(btn) {
+  const tbody = btn.closest('tbody');
+  if (tbody.children.length > 1) {
+    btn.closest('tr').remove();
+  }
+}
+
+function toggleProveedoresTable() {
+  const num = parseInt(document.getElementById('num_proveedores').value) || 0;
+  const section = document.getElementById('proveedores-section');
+  section.style.display = num > 0 ? '' : 'none';
+}
+
+function addProveedorRow() {
+  const tbody = document.querySelector('#proveedores-table tbody');
+  const row = document.createElement('tr');
+  row.innerHTML = `
+    <td><input type="text"></td>
+    <td><input type="number" step="any"></td>
+    <td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td>
+  `;
+  tbody.appendChild(row);
+}
+
+function removeProveedorRow(btn) {
+  const tbody = btn.closest('tbody');
+  if (tbody.children.length > 1) {
+    btn.closest('tr').remove();
+  }
+}
+
+function addOtraArea(nombre, cantidad) {
+  const container = document.getElementById('otras-areas-container');
+  const row = document.createElement('div');
+  row.className = 'otra-area-row zona-row';
+  row.innerHTML = `
+    <input type="text" class="zona-input" placeholder="Nombre del área" value="${nombre || ''}">
+    <input type="number" class="zona-input" style="max-width:100px" placeholder="Cantidad" min="0" value="${cantidad || ''}">
+    <button type="button" class="btn-remove-zona" onclick="removeOtraArea(this)">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function removeOtraArea(btn) {
+  btn.closest('.otra-area-row').remove();
 }
 
 function dismissBanner() {
@@ -707,94 +1410,3 @@ document.querySelectorAll('.progress-step').forEach(step => {
     }
   });
 });
-
-// === DRAFT SAVE/LOAD (local file) ===
-function startNew() {
-  const nombre = document.getElementById('vendedor_nombre').value.trim();
-  if (!nombre) {
-    showWelcomeStatus('Por favor ingresá tu nombre', 'error');
-    return;
-  }
-  state.vendedorNombre = nombre;
-  document.getElementById('welcome-overlay').style.display = 'none';
-}
-
-function loadDraft() {
-  const nombre = document.getElementById('vendedor_nombre').value.trim();
-  if (!nombre) {
-    showWelcomeStatus('Por favor ingresá tu nombre para buscar tu borrador', 'error');
-    return;
-  }
-  state.vendedorNombre = nombre;
-
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.assessment';
-  input.onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    showWelcomeStatus('Cargando borrador...', 'loading');
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = JSON.parse(evt.target.result);
-        if (data.datos) {
-          Object.entries(data.datos).forEach(([key, val]) => {
-            const el = document.getElementById(key);
-            if (el && val) el.value = val;
-          });
-        }
-        if (data.porte) restorePorteValues(data.porte);
-        if (data.answers) state.answers = data.answers;
-        if (data.currentStep) state.currentStep = data.currentStep;
-        if (data.currentCategory !== undefined) state.currentCategory = data.currentCategory;
-        saveToStorage();
-        showWelcomeStatus('Borrador cargado correctamente.', 'success');
-        setTimeout(() => {
-          document.getElementById('welcome-overlay').style.display = 'none';
-          renderQuestions(state.currentCategory);
-          goToStep(state.currentStep);
-        }, 1000);
-      } catch (err) {
-        showWelcomeStatus('El archivo no es válido. Seleccioná un archivo de borrador correcto.', 'error');
-      }
-    };
-    reader.readAsText(file);
-  };
-  input.click();
-}
-
-function saveDraft() {
-  saveToStorage();
-  const datos = getDatosValues();
-  const porte = getPorteValues();
-
-  const payload = {
-    status: "borrador",
-    vendedor: state.vendedorNombre || datos.nombre_distribuidor || 'Sin identificar',
-    timestamp: new Date().toISOString(),
-    datos,
-    porte,
-    answers: state.answers,
-    currentStep: state.currentStep,
-    currentCategory: state.currentCategory
-  };
-
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  const vendedor = (state.vendedorNombre || datos.nombre_distribuidor || 'borrador').replace(/\s+/g, '_');
-  const fecha = new Date().toISOString().slice(0, 10);
-  link.download = `Assessment_${vendedor}_${fecha}.assessment`;
-  link.click();
-  URL.revokeObjectURL(url);
-  showToast('Borrador descargado. Guardá el archivo para retomar después.');
-}
-
-function showWelcomeStatus(msg, type) {
-  const el = document.getElementById('welcome-status');
-  el.textContent = msg;
-  el.className = 'welcome-status ' + type;
-}
-
