@@ -367,6 +367,8 @@ async function downloadAllCompleted() {
 // === ADMIN FUNCTIONS ===
 async function loadAdminAssessments() {
   const { data, error } = await supabaseClient.rpc('get_all_assessments');
+  console.log('ADMIN RPC error:', error);
+  console.log('ADMIN RPC data:', data);
   const container = document.getElementById('cards-admin');
 
   if (error || !data || data.length === 0) {
