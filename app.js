@@ -25,7 +25,11 @@ async function initApp() {
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (session) {
     currentUser = session.user;
-    showHome();
+    if (currentUser.user_metadata?.must_change_password) {
+      showChangePassword();
+    } else {
+      showHome();
+    }
   } else {
     showLogin();
   }
@@ -72,6 +76,59 @@ async function handleLogin(e) {
 
   currentUser = data.user;
   statusEl.className = 'login-status';
+
+  if (currentUser.user_metadata?.must_change_password) {
+    showChangePassword();
+  } else {
+    showHome();
+  }
+}
+
+function showChangePassword() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('change-password-overlay').style.display = 'flex';
+  document.getElementById('home-view').style.display = 'none';
+  document.getElementById('wizard-header').style.display = 'none';
+  document.getElementById('wizard-content').style.display = 'none';
+  document.getElementById('wizard-footer').style.display = 'none';
+}
+
+async function handleChangePassword(e) {
+  e.preventDefault();
+  const newPass = document.getElementById('new-password').value;
+  const confirmPass = document.getElementById('confirm-password').value;
+  const statusEl = document.getElementById('change-password-status');
+
+  if (newPass !== confirmPass) {
+    statusEl.textContent = 'Las contraseñas no coinciden.';
+    statusEl.className = 'login-status error';
+    return;
+  }
+
+  if (newPass.length < 6) {
+    statusEl.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+    statusEl.className = 'login-status error';
+    return;
+  }
+
+  statusEl.textContent = 'Guardando...';
+  statusEl.className = 'login-status loading';
+  document.getElementById('change-password-btn').disabled = true;
+
+  const { error: passError } = await supabaseClient.auth.updateUser({ password: newPass });
+  if (passError) {
+    statusEl.textContent = 'Error al cambiar la contraseña. Intentá de nuevo.';
+    statusEl.className = 'login-status error';
+    document.getElementById('change-password-btn').disabled = false;
+    return;
+  }
+
+  const { error: metaError } = await supabaseClient.auth.updateUser({
+    data: { must_change_password: false }
+  });
+
+  document.getElementById('change-password-btn').disabled = false;
+  document.getElementById('change-password-overlay').style.display = 'none';
   showHome();
 }
 
@@ -1064,6 +1121,7 @@ async function exportExcel() {
         const numVal = subVal ? getCalificacionValue(subVal) : '';
         const r = wsAssess.addRow(['', '', sq, calLabel, numVal, '']);
         r.eachCell(cell => { cell.border = borders; });
+        r.getCell(5).numFmt = '0%';
         if (subVal === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' } };
         else if (subVal === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' } };
         else if (subVal === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' } };
