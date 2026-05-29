@@ -1006,6 +1006,13 @@ html {
   border-left-color: var(--success-green);
 }
 
+.assessment-card .card-user-email {
+  font-size: 0.8rem;
+  color: var(--primary-blue);
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+}
+
 .assessment-card .card-distribuidor {
   font-weight: 600;
   font-size: 0.95rem;

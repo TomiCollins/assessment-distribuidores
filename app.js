@@ -164,6 +164,7 @@ async function handlePasswordReset() {
 // === HOME / DASHBOARD ===
 async function showHome() {
   document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('change-password-overlay').style.display = 'none';
   document.getElementById('home-view').style.display = 'block';
   document.getElementById('wizard-header').style.display = 'none';
   document.getElementById('wizard-content').style.display = 'none';
@@ -171,6 +172,13 @@ async function showHome() {
 
   document.getElementById('user-email-display').textContent = currentUser?.email || '';
   await loadAssessmentsList();
+
+  if (currentUser.user_metadata?.is_admin) {
+    document.getElementById('admin-section').style.display = '';
+    await loadAdminAssessments();
+  } else {
+    document.getElementById('admin-section').style.display = 'none';
+  }
 }
 
 async function loadAssessmentsList() {
@@ -329,6 +337,93 @@ async function downloadAllCompleted() {
 
   if (error || !data || data.length === 0) {
     showToast('No hay assessments completados para descargar.');
+    return;
+  }
+
+  for (let i = 0; i < data.length; i++) {
+    const a = data[i];
+    const payload = a.payload || {};
+    state.answers = payload.answers || {};
+    state.vendedorNombre = a.vendedor || '';
+
+    if (payload.datos) {
+      Object.entries(payload.datos).forEach(([key, val]) => {
+        if (key === 'zonas_atendidas') return;
+        const el = document.getElementById(key);
+        if (el) el.value = val || '';
+      });
+    }
+
+    await exportExcel();
+
+    if (i < data.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
+  }
+
+  showToast(`${data.length} Excel(s) descargados.`);
+}
+
+// === ADMIN FUNCTIONS ===
+async function loadAdminAssessments() {
+  const { data, error } = await supabaseClient.rpc('get_all_assessments');
+  const container = document.getElementById('cards-admin');
+
+  if (error || !data || data.length === 0) {
+    container.innerHTML = '<div class="home-empty-state">No hay assessments completados de ningún usuario.</div>';
+    return;
+  }
+
+  container.innerHTML = data.map(a => {
+    const fecha = a.fecha ? new Date(a.fecha).toLocaleDateString('es-AR') : 'Sin fecha';
+    const updated = new Date(a.updated_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+    return `
+      <div class="assessment-card status-completado">
+        <div class="card-user-email">${a.user_email}</div>
+        <div class="card-distribuidor">${a.nombre_distribuidor || 'Sin distribuidor'}</div>
+        <div class="card-meta">Fecha: ${fecha} · Actualizado: ${updated}</div>
+        <div class="card-actions">
+          <button class="btn-card-secondary" onclick="downloadExcelAdmin('${a.id}')">Descargar Excel</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function downloadExcelAdmin(id) {
+  const { data, error } = await supabaseClient.rpc('get_all_assessments');
+  if (error || !data) {
+    showToast('No se pudo cargar el assessment.');
+    return;
+  }
+  const assessment = data.find(a => a.id === id);
+  if (!assessment) {
+    showToast('Assessment no encontrado.');
+    return;
+  }
+
+  const payload = assessment.payload || {};
+  state.answers = payload.answers || {};
+  state.vendedorNombre = assessment.vendedor || '';
+
+  if (payload.datos) {
+    Object.entries(payload.datos).forEach(([key, val]) => {
+      if (key === 'zonas_atendidas') return;
+      const el = document.getElementById(key);
+      if (el) el.value = val || '';
+    });
+  }
+
+  await exportExcel();
+}
+
+async function downloadAllAdmin() {
+  showToast('Descargando todos los assessments...');
+  const { data, error } = await supabaseClient.rpc('get_all_assessments');
+
+  if (error || !data || data.length === 0) {
+    showToast('No hay assessments completados.');
     return;
   }
 
