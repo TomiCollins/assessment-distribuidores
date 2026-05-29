@@ -77,6 +77,9 @@ async function handleLogin(e) {
   currentUser = data.user;
   statusEl.className = 'login-status';
 
+  console.log('USER METADATA:', JSON.stringify(currentUser.user_metadata));
+  console.log('APP METADATA:', JSON.stringify(currentUser.app_metadata));
+
   if (currentUser.user_metadata?.must_change_password) {
     showChangePassword();
   } else {
