@@ -583,6 +583,7 @@ function nextStep() {
 }
 
 function prevStep() {
+  saveToStorage();
   if (state.currentStep > 1) goToStep(state.currentStep - 1);
 }
 
@@ -920,13 +921,14 @@ async function exportExcel() {
   const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
   const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0068B4' } };
   const subHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00824B' } };
-  const lightFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7FA' } };
+  const lightFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
   const borderStyle = { style: 'thin', color: { argb: 'FFE0E5EB' } };
   const borders = { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle };
 
   // --- SOLAPA 1: Datos ---
   const wsDatos = wb.addWorksheet('Datos');
   wsDatos.columns = [{ width: 28 }, { width: 45 }];
+  wsDatos.views = [{ showGridLines: false }];
 
   const datosTitle = wsDatos.addRow(['DATOS GENERALES', '']);
   datosTitle.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF0068B4' } };
@@ -954,6 +956,7 @@ async function exportExcel() {
   // --- SOLAPA 2: Porte ---
   const wsPorte = wb.addWorksheet('Porte');
   wsPorte.columns = [{ width: 32 }, { width: 22 }, { width: 16 }];
+  wsPorte.views = [{ showGridLines: false }];
 
   function addPorteSection(title, fields) {
     const titleRow = wsPorte.addRow([title]);
@@ -1038,6 +1041,7 @@ async function exportExcel() {
   // --- SOLAPA 3: Assessment ---
   const wsAssess = wb.addWorksheet('Assessment');
   wsAssess.columns = [{ width: 6 }, { width: 36 }, { width: 50 }, { width: 14 }, { width: 10 }, { width: 50 }];
+  wsAssess.views = [{ showGridLines: false }];
 
   const assessHdr = wsAssess.addRow(['#', 'Categoría / Aspecto', 'Pregunta', 'Puntuación', 'Valor', 'Observaciones']);
   assessHdr.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
@@ -1052,10 +1056,7 @@ async function exportExcel() {
       sectionRow.getCell(1).font = { bold: true };
       sectionRow.getCell(2).font = { bold: true };
       sectionRow.getCell(5).numFmt = '0%';
-      sectionRow.eachCell(cell => { cell.border = borders; });
-      if (ASSESSMENT_DATA.categories.indexOf(cat) % 2 === 0) {
-        sectionRow.getCell(2).fill = lightFill;
-      }
+      sectionRow.eachCell(cell => { cell.border = borders; cell.fill = lightFill; });
 
       subQs.forEach((sq, i) => {
         const subVal = answer.sub?.[i] || '';
@@ -1073,6 +1074,7 @@ async function exportExcel() {
   // --- SOLAPA 4: Resultados ---
   const wsRes = wb.addWorksheet('Resultados');
   wsRes.columns = [{ width: 42 }, { width: 22 }, { width: 24 }];
+  wsRes.views = [{ showGridLines: false }];
 
   const resTitle = wsRes.addRow(['RESULTADOS DEL ASSESSMENT', '', '']);
   resTitle.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF0068B4' } };
