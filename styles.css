@@ -963,6 +963,21 @@ html {
   border-bottom: 1px solid var(--border-color);
 }
 
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.section-header-row h3 {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 .assessment-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

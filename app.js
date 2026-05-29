@@ -133,6 +133,9 @@ async function loadAssessmentsList() {
 
   renderAssessmentCards(borradores, 'cards-en-progreso', 'borrador');
   renderAssessmentCards(completados, 'cards-completados', 'completado');
+
+  const btnAll = document.getElementById('btn-download-all');
+  btnAll.style.display = completados.length > 0 ? '' : 'none';
 }
 
 function renderAssessmentCards(assessments, containerId, status) {
@@ -257,6 +260,43 @@ async function deleteAssessment(id) {
   localStorage.removeItem(storageKey);
   showToast('Assessment eliminado.');
   await loadAssessmentsList();
+}
+
+async function downloadAllCompleted() {
+  showToast('Descargando assessments...');
+  const { data, error } = await supabaseClient
+    .from('assessments')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .eq('status', 'completado');
+
+  if (error || !data || data.length === 0) {
+    showToast('No hay assessments completados para descargar.');
+    return;
+  }
+
+  for (let i = 0; i < data.length; i++) {
+    const a = data[i];
+    const payload = a.payload || {};
+    state.answers = payload.answers || {};
+    state.vendedorNombre = a.vendedor || '';
+
+    if (payload.datos) {
+      Object.entries(payload.datos).forEach(([key, val]) => {
+        if (key === 'zonas_atendidas') return;
+        const el = document.getElementById(key);
+        if (el) el.value = val || '';
+      });
+    }
+
+    await exportExcel();
+
+    if (i < data.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
+  }
+
+  showToast(`${data.length} Excel(s) descargados.`);
 }
 
 // === WIZARD DISPLAY ===
@@ -1076,12 +1116,19 @@ async function exportExcel() {
 
 // === SUBMIT ASSESSMENT (finalize → download → sync → home) ===
 async function submitAssessment() {
-  const totalQuestions = ASSESSMENT_DATA.categories.reduce((sum, c) => sum + c.questions.length, 0);
-  const totalAnswered = ASSESSMENT_DATA.categories.reduce((sum, c) =>
-    sum + c.questions.filter(q => isQuestionFullyAnswered(q)).length, 0);
+  // Validate all competency questions are answered
+  const incomplete = [];
+  ASSESSMENT_DATA.categories.forEach(cat => {
+    const unanswered = cat.questions.filter(q => !isQuestionFullyAnswered(q));
+    if (unanswered.length > 0) {
+      incomplete.push({ name: cat.name, missing: unanswered.length, total: cat.questions.length });
+    }
+  });
 
-  if (totalAnswered < totalQuestions) {
-    if (!confirm(`Hay ${totalQuestions - totalAnswered} secciones sin completar. ¿Querés finalizar de todas formas?`)) return;
+  if (incomplete.length > 0) {
+    const detail = incomplete.map(c => `• ${c.name}: faltan ${c.missing} de ${c.total}`).join('\n');
+    alert(`No podés finalizar sin completar todas las competencias.\n\nSecciones incompletas:\n${detail}`);
+    return;
   }
 
   const datos = getDatosValues();
@@ -1091,7 +1138,7 @@ async function submitAssessment() {
   // 1. Download Excel
   await exportExcel();
 
-  // 2. Download .assessment backup
+  // 2. Sync to Supabase as completed
   const payload = {
     status: "completado",
     vendedor: state.vendedorNombre || currentUser?.email || '',
@@ -1104,19 +1151,6 @@ async function submitAssessment() {
     resultados: results
   };
 
-  setTimeout(() => {
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const vendedor = (state.vendedorNombre || datos.nombre_distribuidor || 'assessment').replace(/\s+/g, '_');
-    const fecha = datos.fecha || new Date().toISOString().slice(0, 10);
-    link.download = `Assessment_${vendedor}_${fecha}.assessment`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, 500);
-
-  // 3. Sync to Supabase as completed
   if (currentUser && currentAssessmentId) {
     await supabaseClient.from('assessments').upsert({
       id: currentAssessmentId,
@@ -1132,12 +1166,12 @@ async function submitAssessment() {
     });
   }
 
-  // 4. Clear localStorage for this assessment
+  // 3. Clear localStorage for this assessment
   const key = getStorageKey();
   if (key) localStorage.removeItem(key);
 
-  // 5. Show confirmation and redirect to home
-  showToast('Assessment finalizado. Se descargaron el Excel y el archivo de respaldo.');
+  // 4. Show confirmation and redirect to home
+  showToast('Assessment finalizado. Excel descargado.');
   setTimeout(() => {
     currentAssessmentId = null;
     showHome();
