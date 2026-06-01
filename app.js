@@ -253,7 +253,7 @@ async function openAssessment(id) {
 
   currentAssessmentId = id;
   const payload = data.payload || {};
-  state.answers = payload.answers || {};
+  state.answers = migrateAnswersFormat(payload.answers || {});
   state.vendedorNombre = data.vendedor || currentUser?.email || '';
   state.currentStep = payload.currentStep || 1;
   state.currentCategory = payload.currentCategory || 0;
@@ -273,7 +273,7 @@ async function viewCompletedAssessment(id) {
 
   currentAssessmentId = id;
   const payload = data.payload || {};
-  state.answers = payload.answers || {};
+  state.answers = migrateAnswersFormat(payload.answers || {});
   state.vendedorNombre = data.vendedor || '';
   state.currentStep = 4;
   state.currentCategory = 0;
@@ -304,7 +304,7 @@ async function downloadExcelFromCloud(id) {
   }
 
   const payload = data.payload || {};
-  state.answers = payload.answers || {};
+  state.answers = migrateAnswersFormat(payload.answers || {});
   state.vendedorNombre = data.vendedor || '';
 
   const savedDatos = getDatosValues();
@@ -783,7 +783,7 @@ function loadFromStorage() {
       }
     }
     if (data.porte) restorePorteValues(data.porte);
-    if (data.answers) state.answers = data.answers;
+    if (data.answers) state.answers = migrateAnswersFormat(data.answers);
   } catch(e) { /* ignore corrupt data */ }
 }
 
@@ -1033,6 +1033,22 @@ function updateCategoryProgress() {
   progressEl.querySelector('.progress-fill-inner').style.width = `${(answered/cat.questions.length)*100}%`;
 
   document.querySelectorAll('.category-tab').forEach((tab, i) => updateTabStatus(tab, i));
+}
+
+function migrateAnswersFormat(answers) {
+  if (!answers) return {};
+  Object.keys(answers).forEach(qId => {
+    const a = answers[qId];
+    if (a.sub && !a.value) {
+      const values = Object.values(a.sub).map(v => v === 'alto' ? 1.0 : v === 'mediano' ? 0.5 : 0);
+      if (values.length > 0) {
+        const avg = values.reduce((s, v) => s + v, 0) / values.length;
+        a.value = avg >= 0.75 ? 'alto' : avg >= 0.25 ? 'mediano' : 'bajo';
+      }
+      delete a.sub;
+    }
+  });
+  return answers;
 }
 
 // === CALCULATIONS ===
@@ -1429,7 +1445,7 @@ async function generateExcelBuffer(assessment) {
   const payload = assessment.payload || {};
   const datos = payload.datos || {};
   const porte = payload.porte || {};
-  const answers = payload.answers || {};
+  const answers = migrateAnswersFormat(payload.answers || {});
   const userEmail = assessment.user_email || assessment.vendedor || '';
 
   const wb = new ExcelJS.Workbook();
