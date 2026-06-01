@@ -900,9 +900,7 @@ function getSubQuestions(q) {
 
 function isQuestionFullyAnswered(q) {
   const answer = state.answers[q.id];
-  if (!answer || !answer.sub) return false;
-  const subQs = getSubQuestions(q);
-  return subQs.every((_, i) => answer.sub[i]);
+  return !!(answer && answer.value);
 }
 
 function renderQuestions(catIndex) {
@@ -919,46 +917,38 @@ function renderQuestions(catIndex) {
     const answer = state.answers[q.id] || {};
     const subQs = getSubQuestions(q);
     const isAnswered = isQuestionFullyAnswered(q) ? 'answered' : '';
-    const answeredCount = subQs.filter((_, i) => answer.sub?.[i]).length;
+    const currentValue = answer.value || '';
 
-    let subQuestionsHtml = subQs.map((sq, i) => {
-      const subVal = answer.sub?.[i] || '';
-      return `
-        <div class="sub-question">
-          <div class="sub-question-text">${sq}</div>
-          <div class="rating-options rating-options-inline">
-            <div class="rating-option bajo">
-              <input type="radio" name="q_${q.id}_${i}" id="q_${q.id}_${i}_bajo" value="bajo" ${subVal === 'bajo' ? 'checked' : ''} onchange="setSubAnswer('${q.id}', ${i}, 'bajo')">
-              <label for="q_${q.id}_${i}_bajo">Bajo - 0%</label>
-            </div>
-            <div class="rating-option mediano">
-              <input type="radio" name="q_${q.id}_${i}" id="q_${q.id}_${i}_mediano" value="mediano" ${subVal === 'mediano' ? 'checked' : ''} onchange="setSubAnswer('${q.id}', ${i}, 'mediano')">
-              <label for="q_${q.id}_${i}_mediano">Mediano - 50%</label>
-            </div>
-            <div class="rating-option alto">
-              <input type="radio" name="q_${q.id}_${i}" id="q_${q.id}_${i}_alto" value="alto" ${subVal === 'alto' ? 'checked' : ''} onchange="setSubAnswer('${q.id}', ${i}, 'alto')">
-              <label for="q_${q.id}_${i}_alto">Alto - 100%</label>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
+    const preguntasHtml = subQs.map(sq => `<li>${sq}</li>`).join('');
 
     return `
       <div class="question-card ${isAnswered}" id="card-${q.id}">
         <div class="question-header">
           <span class="question-number">${q.id}</span>
           <span class="question-aspecto">${q.aspecto}</span>
-          <span class="question-progress-badge">${answeredCount}/${subQs.length}</span>
+        </div>
+        <div class="preguntas-disparadoras">
+          <ul>${preguntasHtml}</ul>
+        </div>
+        <div class="rating-options rating-options-block">
+          <div class="rating-option bajo">
+            <input type="radio" name="q_${q.id}" id="q_${q.id}_bajo" value="bajo" ${currentValue === 'bajo' ? 'checked' : ''} onchange="setAnswer('${q.id}', 'bajo')">
+            <label for="q_${q.id}_bajo">Bajo - 0%</label>
+          </div>
+          <div class="rating-option mediano">
+            <input type="radio" name="q_${q.id}" id="q_${q.id}_mediano" value="mediano" ${currentValue === 'mediano' ? 'checked' : ''} onchange="setAnswer('${q.id}', 'mediano')">
+            <label for="q_${q.id}_mediano">Mediano - 50%</label>
+          </div>
+          <div class="rating-option alto">
+            <input type="radio" name="q_${q.id}" id="q_${q.id}_alto" value="alto" ${currentValue === 'alto' ? 'checked' : ''} onchange="setAnswer('${q.id}', 'alto')">
+            <label for="q_${q.id}_alto">Alto - 100%</label>
+          </div>
         </div>
         <div class="level-descriptions">
           <button class="level-toggle" onclick="toggleDetails('${q.id}')">Ver criterios de evaluación</button>
           <div class="level-details" id="details-${q.id}">
             ${renderLevelDetails(q)}
           </div>
-        </div>
-        <div class="sub-questions-container">
-          ${subQuestionsHtml}
         </div>
         <div class="obs-label">Observaciones generales</div>
         <textarea placeholder="Observaciones opcionales para esta sección..." onblur="setObservation('${q.id}', this.value)">${answer.observaciones || ''}</textarea>
@@ -1007,20 +997,11 @@ function toggleDetails(qId) {
   el.classList.toggle('visible');
 }
 
-function setSubAnswer(qId, subIndex, value) {
+function setAnswer(qId, value) {
   if (!state.answers[qId]) state.answers[qId] = {};
-  if (!state.answers[qId].sub) state.answers[qId].sub = {};
-  state.answers[qId].sub[subIndex] = value;
+  state.answers[qId].value = value;
 
-  const q = ASSESSMENT_DATA.categories.flatMap(c => c.questions).find(q => q.id === qId);
-  if (q && isQuestionFullyAnswered(q)) {
-    document.getElementById(`card-${qId}`).classList.add('answered');
-  }
-  const subQs = getSubQuestions(q);
-  const answeredCount = subQs.filter((_, i) => state.answers[qId].sub[i]).length;
-  const badge = document.querySelector(`#card-${qId} .question-progress-badge`);
-  if (badge) badge.textContent = `${answeredCount}/${subQs.length}`;
-
+  document.getElementById(`card-${qId}`).classList.add('answered');
   updateCategoryProgress();
   saveToStorage();
 }
@@ -1050,17 +1031,8 @@ function getCalificacionValue(calificacion) {
 
 function getQuestionAverage(q) {
   const answer = state.answers[q.id];
-  if (!answer?.sub) return 0;
-  const subQs = getSubQuestions(q);
-  let sum = 0;
-  let count = 0;
-  subQs.forEach((_, i) => {
-    if (answer.sub[i]) {
-      sum += getCalificacionValue(answer.sub[i]);
-      count++;
-    }
-  });
-  return count > 0 ? sum / count : 0;
+  if (!answer?.value) return 0;
+  return getCalificacionValue(answer.value);
 }
 
 function calculateResults() {
@@ -1306,26 +1278,17 @@ async function exportExcel() {
   ASSESSMENT_DATA.categories.forEach(cat => {
     cat.questions.forEach(q => {
       const answer = state.answers[q.id] || {};
-      const subQs = getSubQuestions(q);
-      const avg = getQuestionAverage(q);
+      const val = getQuestionAverage(q);
+      const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo' : answer.value === 'mediano' ? 'Mediano' : 'Alto') : '';
 
-      const sectionRow = wsAssess.addRow([q.id, cat.name + ' — ' + q.aspecto, '', '', avg || '', answer.observaciones || '']);
-      sectionRow.getCell(1).font = { bold: true };
-      sectionRow.getCell(2).font = { bold: true };
-      sectionRow.getCell(5).numFmt = '0%';
-      sectionRow.eachCell(cell => { cell.border = borders; cell.fill = lightFill; });
-
-      subQs.forEach((sq, i) => {
-        const subVal = answer.sub?.[i] || '';
-        const calLabel = subVal ? (subVal === 'bajo' ? 'Bajo' : subVal === 'mediano' ? 'Mediano' : 'Alto') : '';
-        const numVal = subVal ? getCalificacionValue(subVal) : '';
-        const r = wsAssess.addRow(['', '', sq, calLabel, numVal, '']);
-        r.eachCell(cell => { cell.border = borders; });
-        r.getCell(5).numFmt = '0%';
-        if (subVal === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' } };
-        else if (subVal === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' } };
-        else if (subVal === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' } };
-      });
+      const r = wsAssess.addRow([q.id, cat.name + ' — ' + q.aspecto, q.pregunta.replace(/\n/g, '; '), calLabel, val || '', answer.observaciones || '']);
+      r.getCell(1).font = { bold: true };
+      r.getCell(2).font = { bold: true };
+      r.getCell(5).numFmt = '0%';
+      r.eachCell(cell => { cell.border = borders; });
+      if (answer.value === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' }, bold: true };
+      else if (answer.value === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' }, bold: true };
+      else if (answer.value === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' }, bold: true };
     });
   });
 
@@ -1525,27 +1488,17 @@ async function generateExcelBuffer(assessment) {
   ASSESSMENT_DATA.categories.forEach(cat => {
     cat.questions.forEach(q => {
       const answer = answers[q.id] || {};
-      const subQs = getSubQuestions(q);
-      const subAnswered = subQs.filter((_, i) => answer.sub?.[i]).length;
-      const avg = subAnswered > 0 ? subQs.reduce((sum, _, i) => sum + (getCalificacionValue(answer.sub?.[i]) || 0), 0) / subQs.length : 0;
+      const val = answer.value ? getCalificacionValue(answer.value) : 0;
+      const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo' : answer.value === 'mediano' ? 'Mediano' : 'Alto') : '';
 
-      const sectionRow = wsAssess.addRow([q.id, cat.name + ' — ' + q.aspecto, '', '', avg || '', answer.observaciones || '']);
-      sectionRow.getCell(1).font = { bold: true };
-      sectionRow.getCell(2).font = { bold: true };
-      sectionRow.getCell(5).numFmt = '0%';
-      sectionRow.eachCell(cell => { cell.border = borders; cell.fill = lightFill; });
-
-      subQs.forEach((sq, i) => {
-        const subVal = answer.sub?.[i] || '';
-        const calLabel = subVal ? (subVal === 'bajo' ? 'Bajo' : subVal === 'mediano' ? 'Mediano' : 'Alto') : '';
-        const numVal = subVal ? getCalificacionValue(subVal) : '';
-        const r = wsAssess.addRow(['', '', sq, calLabel, numVal, '']);
-        r.eachCell(cell => { cell.border = borders; });
-        r.getCell(5).numFmt = '0%';
-        if (subVal === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' } };
-        else if (subVal === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' } };
-        else if (subVal === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' } };
-      });
+      const r = wsAssess.addRow([q.id, cat.name + ' — ' + q.aspecto, q.pregunta.replace(/\n/g, '; '), calLabel, val || '', answer.observaciones || '']);
+      r.getCell(1).font = { bold: true };
+      r.getCell(2).font = { bold: true };
+      r.getCell(5).numFmt = '0%';
+      r.eachCell(cell => { cell.border = borders; });
+      if (answer.value === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' }, bold: true };
+      else if (answer.value === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' }, bold: true };
+      else if (answer.value === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' }, bold: true };
     });
   });
 
@@ -1590,12 +1543,10 @@ function calculateResultsFromAnswers(answers) {
     let scoreSeccion = 0;
     let scoreTotal = 0;
     cat.questions.forEach(q => {
-      const subQs = getSubQuestions(q);
       const answer = answers[q.id] || {};
-      const subAnswered = subQs.filter((_, i) => answer.sub?.[i]).length;
-      const avg = subAnswered > 0 ? subQs.reduce((sum, _, i) => sum + (getCalificacionValue(answer.sub?.[i]) || 0), 0) / subQs.length : 0;
-      scoreTotal += avg * q.ponderacionTotal;
-      scoreSeccion += avg * q.ponderacionSeccion;
+      const val = answer.value ? getCalificacionValue(answer.value) : 0;
+      scoreTotal += val * q.ponderacionTotal;
+      scoreSeccion += val * q.ponderacionSeccion;
     });
     return { name: cat.name, scoreTotal, scoreCategoria: scoreSeccion };
   });

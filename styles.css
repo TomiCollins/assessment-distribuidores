@@ -367,46 +367,40 @@ h2 {
   color: white;
 }
 
-/* Sub-questions */
-.sub-questions-container {
+/* Preguntas disparadoras */
+.preguntas-disparadoras {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--light-bg);
+  border-radius: 6px;
+  border-left: 3px solid var(--primary-blue);
+}
+
+.preguntas-disparadoras ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.preguntas-disparadoras li {
+  font-size: 0.88rem;
+  color: var(--dark-text);
+  line-height: 1.6;
+  margin-bottom: 0.3rem;
+}
+
+.preguntas-disparadoras li:last-child {
+  margin-bottom: 0;
+}
+
+/* Rating options block (single selection per question) */
+.rating-options-block {
+  display: flex;
+  gap: 0.6rem;
   margin-bottom: 1rem;
 }
 
-.sub-question {
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--border-color);
-  border-radius: 6px;
-  margin-bottom: 0.25rem;
-  transition: background 0.2s;
-}
-
-.sub-question:hover {
-  background: var(--light-bg);
-}
-
-.sub-question:last-child {
-  border-bottom: none;
-}
-
-.sub-question-text {
-  font-size: 0.88rem;
-  color: var(--dark-text);
-  margin-bottom: 0.5rem;
-  line-height: 1.5;
-}
-
-.rating-options-inline {
-  display: flex;
-  gap: 0.4rem;
-}
-
-.rating-options-inline .rating-option {
+.rating-options-block .rating-option {
   flex: 1;
-}
-
-.rating-options-inline .rating-option label {
-  padding: 0.4rem 0.5rem;
-  font-size: 0.75rem;
 }
 
 /* Category Navigation Buttons */
@@ -810,7 +804,7 @@ html {
   .progress-step .step-label { display: none; }
   .main-content { padding: 1.5rem 1rem 5rem; }
   .rating-options { grid-template-columns: 1fr; }
-  .rating-options-inline { flex-direction: column; }
+  .rating-options-block { flex-direction: column; }
   .form-grid { grid-template-columns: 1fr; }
   .category-tabs { gap: 0.3rem; }
   .category-tab { font-size: 0.7rem; padding: 0.4rem 0.5rem; }
