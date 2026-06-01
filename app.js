@@ -1023,6 +1023,15 @@ function updateCategoryProgress() {
 }
 
 // === CALCULATIONS ===
+function formatCriteriaText(level) {
+  if (!level) return '';
+  let text = level.titulo;
+  if (level.detalles && level.detalles.length > 0) {
+    text += '\n' + level.detalles.map(d => '• ' + d).join('\n');
+  }
+  return text;
+}
+
 function getCalificacionValue(calificacion) {
   if (calificacion === 'alto') return 1.0;
   if (calificacion === 'mediano') return 0.5;
@@ -1267,29 +1276,79 @@ async function exportExcel() {
     });
   }
 
-  // --- SOLAPA 3: Assessment ---
+  // --- SOLAPA 3: Assessment (Competencias) ---
   const wsAssess = wb.addWorksheet('Assessment');
-  wsAssess.columns = [{ width: 6 }, { width: 36 }, { width: 50 }, { width: 14 }, { width: 10 }, { width: 50 }];
+  wsAssess.columns = [
+    { width: 5 },   // A: #
+    { width: 18 },  // B: Aspecto a evaluar
+    { width: 40 },  // C: Pregunta
+    { width: 14 },  // D: Calificación
+    { width: 30 },  // E: Observaciones
+    { width: 40 },  // F: Bajo - 0%
+    { width: 40 },  // G: Mediano - 50%
+    { width: 40 },  // H: Alto - 100%
+    { width: 12 },  // I: Ponderación total
+    { width: 12 },  // J: Ponderación competencia
+    { width: 12 },  // K: Calif. ponderada sección
+    { width: 12 }   // L: Calif. ponderada total
+  ];
   wsAssess.views = [{ showGridLines: false }];
 
-  const assessHdr = wsAssess.addRow(['#', 'Categoría / Aspecto', 'Pregunta', 'Puntuación', 'Valor', 'Observaciones']);
-  assessHdr.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
+  const catHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00824B' } };
+  const catHeaderFont = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+  const colHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4CAF50' } };
+  const colHeaderFont = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
 
-  ASSESSMENT_DATA.categories.forEach(cat => {
+  ASSESSMENT_DATA.categories.forEach((cat, catIdx) => {
+    // Category header row
+    const catRow = wsAssess.addRow([`${catIdx + 1}`, cat.name.toUpperCase(), '', '', '', '', '', '', '', '', '', '']);
+    catRow.eachCell(cell => { cell.font = catHeaderFont; cell.fill = catHeaderFill; cell.border = borders; });
+    wsAssess.mergeCells(catRow.number, 2, catRow.number, 12);
+
+    // Column headers row
+    const colHdr = wsAssess.addRow(['#', 'Aspecto a evaluar', 'Pregunta', 'Calificación', 'Observaciones', 'Bajo - 0%', 'Mediano - 50%', 'Alto - 100%', 'Ponderación total', 'Ponderación competencia', 'Calificación ponderada sección', 'Calificación ponderada total']);
+    colHdr.eachCell(cell => { cell.font = colHeaderFont; cell.fill = colHeaderFill; cell.border = borders; cell.alignment = { wrapText: true, vertical: 'middle' }; });
+
+    // Data rows
     cat.questions.forEach(q => {
       const answer = state.answers[q.id] || {};
-      const val = getQuestionAverage(q);
-      const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo' : answer.value === 'mediano' ? 'Mediano' : 'Alto') : '';
+      const val = answer.value ? getCalificacionValue(answer.value) : null;
+      const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo - 0%' : answer.value === 'mediano' ? 'Mediano - 50%' : 'Alto - 100%') : '';
+      const pondTotal = q.ponderacionTotal;
+      const pondComp = q.ponderacionCompetencia;
+      const califPondSeccion = val !== null ? val * pondComp : '';
+      const califPondTotal = val !== null ? val * pondTotal : '';
 
-      const r = wsAssess.addRow([q.id, cat.name + ' — ' + q.aspecto, q.pregunta.replace(/\n/g, '; '), calLabel, val || '', answer.observaciones || '']);
+      const r = wsAssess.addRow([
+        q.id,
+        q.aspecto,
+        q.pregunta.replace(/\n/g, '\n'),
+        calLabel,
+        answer.observaciones || '',
+        formatCriteriaText(q.bajo),
+        formatCriteriaText(q.mediano),
+        formatCriteriaText(q.alto),
+        pondTotal,
+        pondComp,
+        califPondSeccion,
+        califPondTotal
+      ]);
+
+      r.eachCell(cell => { cell.border = borders; cell.alignment = { wrapText: true, vertical: 'top' }; });
       r.getCell(1).font = { bold: true };
       r.getCell(2).font = { bold: true };
-      r.getCell(5).numFmt = '0%';
-      r.eachCell(cell => { cell.border = borders; });
+      r.getCell(9).numFmt = '0%';
+      r.getCell(10).numFmt = '0%';
+      if (califPondSeccion !== '') r.getCell(11).numFmt = '0%';
+      if (califPondTotal !== '') r.getCell(12).numFmt = '0%';
+
       if (answer.value === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' }, bold: true };
       else if (answer.value === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' }, bold: true };
       else if (answer.value === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' }, bold: true };
     });
+
+    // Empty row between categories
+    wsAssess.addRow([]);
   });
 
   // --- SOLAPA 4: Resultados ---
@@ -1478,28 +1537,75 @@ async function generateExcelBuffer(assessment) {
     });
   }
 
-  // --- SOLAPA 3: Assessment ---
+  // --- SOLAPA 3: Assessment (Competencias) ---
   const wsAssess = wb.addWorksheet('Assessment');
-  wsAssess.columns = [{ width: 6 }, { width: 36 }, { width: 50 }, { width: 14 }, { width: 10 }, { width: 50 }];
+  wsAssess.columns = [
+    { width: 5 },   // A: #
+    { width: 18 },  // B: Aspecto a evaluar
+    { width: 40 },  // C: Pregunta
+    { width: 14 },  // D: Calificación
+    { width: 30 },  // E: Observaciones
+    { width: 40 },  // F: Bajo - 0%
+    { width: 40 },  // G: Mediano - 50%
+    { width: 40 },  // H: Alto - 100%
+    { width: 12 },  // I: Ponderación total
+    { width: 12 },  // J: Ponderación competencia
+    { width: 12 },  // K: Calif. ponderada sección
+    { width: 12 }   // L: Calif. ponderada total
+  ];
   wsAssess.views = [{ showGridLines: false }];
-  const assessHdr = wsAssess.addRow(['#', 'Categoría / Aspecto', 'Pregunta', 'Puntuación', 'Valor', 'Observaciones']);
-  assessHdr.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
 
-  ASSESSMENT_DATA.categories.forEach(cat => {
+  const catHeaderFillBuf = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00824B' } };
+  const catHeaderFontBuf = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+  const colHeaderFillBuf = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4CAF50' } };
+  const colHeaderFontBuf = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
+
+  ASSESSMENT_DATA.categories.forEach((cat, catIdx) => {
+    const catRow = wsAssess.addRow([`${catIdx + 1}`, cat.name.toUpperCase(), '', '', '', '', '', '', '', '', '', '']);
+    catRow.eachCell(cell => { cell.font = catHeaderFontBuf; cell.fill = catHeaderFillBuf; cell.border = borders; });
+    wsAssess.mergeCells(catRow.number, 2, catRow.number, 12);
+
+    const colHdr = wsAssess.addRow(['#', 'Aspecto a evaluar', 'Pregunta', 'Calificación', 'Observaciones', 'Bajo - 0%', 'Mediano - 50%', 'Alto - 100%', 'Ponderación total', 'Ponderación competencia', 'Calificación ponderada sección', 'Calificación ponderada total']);
+    colHdr.eachCell(cell => { cell.font = colHeaderFontBuf; cell.fill = colHeaderFillBuf; cell.border = borders; cell.alignment = { wrapText: true, vertical: 'middle' }; });
+
     cat.questions.forEach(q => {
       const answer = answers[q.id] || {};
-      const val = answer.value ? getCalificacionValue(answer.value) : 0;
-      const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo' : answer.value === 'mediano' ? 'Mediano' : 'Alto') : '';
+      const val = answer.value ? getCalificacionValue(answer.value) : null;
+      const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo - 0%' : answer.value === 'mediano' ? 'Mediano - 50%' : 'Alto - 100%') : '';
+      const pondTotal = q.ponderacionTotal;
+      const pondComp = q.ponderacionCompetencia;
+      const califPondSeccion = val !== null ? val * pondComp : '';
+      const califPondTotal = val !== null ? val * pondTotal : '';
 
-      const r = wsAssess.addRow([q.id, cat.name + ' — ' + q.aspecto, q.pregunta.replace(/\n/g, '; '), calLabel, val || '', answer.observaciones || '']);
+      const r = wsAssess.addRow([
+        q.id,
+        q.aspecto,
+        q.pregunta.replace(/\n/g, '\n'),
+        calLabel,
+        answer.observaciones || '',
+        formatCriteriaText(q.bajo),
+        formatCriteriaText(q.mediano),
+        formatCriteriaText(q.alto),
+        pondTotal,
+        pondComp,
+        califPondSeccion,
+        califPondTotal
+      ]);
+
+      r.eachCell(cell => { cell.border = borders; cell.alignment = { wrapText: true, vertical: 'top' }; });
       r.getCell(1).font = { bold: true };
       r.getCell(2).font = { bold: true };
-      r.getCell(5).numFmt = '0%';
-      r.eachCell(cell => { cell.border = borders; });
+      r.getCell(9).numFmt = '0%';
+      r.getCell(10).numFmt = '0%';
+      if (califPondSeccion !== '') r.getCell(11).numFmt = '0%';
+      if (califPondTotal !== '') r.getCell(12).numFmt = '0%';
+
       if (answer.value === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' }, bold: true };
       else if (answer.value === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' }, bold: true };
       else if (answer.value === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' }, bold: true };
     });
+
+    wsAssess.addRow([]);
   });
 
   // --- SOLAPA 4: Resultados ---
@@ -1546,7 +1652,7 @@ function calculateResultsFromAnswers(answers) {
       const answer = answers[q.id] || {};
       const val = answer.value ? getCalificacionValue(answer.value) : 0;
       scoreTotal += val * q.ponderacionTotal;
-      scoreSeccion += val * q.ponderacionSeccion;
+      scoreSeccion += val * q.ponderacionCompetencia;
     });
     return { name: cat.name, scoreTotal, scoreCategoria: scoreSeccion };
   });
