@@ -220,8 +220,9 @@ function renderAssessmentCards(assessments, containerId, status) {
     const actions = status === 'borrador'
       ? `<button class="btn-card-primary" onclick="openAssessment('${a.id}')">Continuar</button>
          <button class="btn-card-danger" onclick="deleteAssessment('${a.id}')">Eliminar</button>`
-      : `<button class="btn-card-primary" onclick="viewCompletedAssessment('${a.id}')">Ver</button>
-         <button class="btn-card-secondary" onclick="downloadExcelFromCloud('${a.id}')">Descargar Excel</button>`;
+      : `<button class="btn-card-primary" onclick="editCompletedAssessment('${a.id}')">Editar</button>
+         <button class="btn-card-secondary" onclick="downloadExcelFromCloud('${a.id}')">Descargar Excel</button>
+         <button class="btn-card-danger" onclick="deleteAssessment('${a.id}')">Eliminar</button>`;
 
     return `
       <div class="assessment-card status-${status}">
@@ -281,6 +282,18 @@ async function viewCompletedAssessment(id) {
   restoreFromPayload(payload);
   initWizard();
   goToStep(4);
+}
+
+async function editCompletedAssessment(id) {
+  if (!confirm('¿Querés editar este assessment? Pasará a estado borrador hasta que lo finalices nuevamente.')) return;
+
+  const { error: updateError } = await supabaseClient.from('assessments').update({ status: 'borrador' }).eq('id', id);
+  if (updateError) {
+    showToast('No se pudo cambiar el estado del assessment.');
+    return;
+  }
+
+  await openAssessment(id);
 }
 
 async function downloadExcelFromCloud(id) {
