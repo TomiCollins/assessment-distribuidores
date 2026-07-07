@@ -7,14 +7,17 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
 let state = {
   currentStep: 1,
   currentCategory: 0,
+  currentPillar: 0,
   answers: {},
   chartInstance: null,
+  chartInstancePilares: null,
   vendedorNombre: ''
 };
 
 let currentUser = null;
 let currentAssessmentId = null;
 let syncTimer = null;
+let isPasswordRecoveryFlow = false;
 
 // === INITIALIZATION ===
 document.addEventListener('DOMContentLoaded', () => {
@@ -22,10 +25,17 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function initApp() {
+  // Supabase recovery links can return tokens in URL hash/query with type=recovery.
+  // If present, force the password change screen instead of entering home directly.
+  const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+  const queryParams = new URLSearchParams(window.location.search || '');
+  const flowType = hashParams.get('type') || queryParams.get('type');
+  isPasswordRecoveryFlow = flowType === 'recovery';
+
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (session) {
     currentUser = session.user;
-    if (!currentUser.user_metadata?.password_changed) {
+    if (isPasswordRecoveryFlow || !currentUser.user_metadata?.password_changed) {
       showChangePassword();
     } else {
       showHome();
@@ -37,10 +47,19 @@ async function initApp() {
   supabaseClient.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT') {
       currentUser = null;
+      isPasswordRecoveryFlow = false;
       showLogin();
+    }
+    if (event === 'PASSWORD_RECOVERY') {
+      isPasswordRecoveryFlow = true;
+      currentUser = session?.user || currentUser;
+      showChangePassword();
     }
     if (event === 'SIGNED_IN' && session) {
       currentUser = session.user;
+      if (isPasswordRecoveryFlow) {
+        showChangePassword();
+      }
     }
   });
 }
@@ -127,6 +146,12 @@ async function handleChangePassword(e) {
     data: { password_changed: true }
   });
 
+  if (!metaError) {
+    isPasswordRecoveryFlow = false;
+    // Clean recovery params/hash after successful password change.
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
   document.getElementById('change-password-btn').disabled = false;
   document.getElementById('change-password-overlay').style.display = 'none';
   showHome();
@@ -136,6 +161,7 @@ async function handleLogout() {
   await supabaseClient.auth.signOut();
   currentUser = null;
   currentAssessmentId = null;
+  isPasswordRecoveryFlow = false;
   showLogin();
 }
 
@@ -238,7 +264,7 @@ function renderAssessmentCards(assessments, containerId, status) {
 // === ASSESSMENT CRUD ===
 function startNewAssessment() {
   currentAssessmentId = crypto.randomUUID();
-  state = { currentStep: 1, currentCategory: 0, answers: {}, chartInstance: null, vendedorNombre: currentUser?.email || '' };
+  state = { currentStep: 1, currentCategory: 0, currentPillar: 0, answers: {}, chartInstance: null, chartInstancePilares: null, vendedorNombre: currentUser?.email || '' };
   showWizard();
   resetWizardForm();
   initWizard();
@@ -257,6 +283,9 @@ async function openAssessment(id) {
   state.vendedorNombre = data.vendedor || currentUser?.email || '';
   state.currentStep = payload.currentStep || 1;
   state.currentCategory = payload.currentCategory || 0;
+  state.currentPillar = (payload.currentPillar !== undefined && payload.currentPillar !== null)
+    ? payload.currentPillar
+    : getPilarIndexByCategoryIndex(state.currentCategory);
 
   showWizard();
   restoreFromPayload(payload);
@@ -277,6 +306,7 @@ async function viewCompletedAssessment(id) {
   state.vendedorNombre = data.vendedor || '';
   state.currentStep = 4;
   state.currentCategory = 0;
+  state.currentPillar = 0;
 
   showWizard();
   restoreFromPayload(payload);
@@ -575,6 +605,17 @@ function showWizard() {
 
 function initWizard() {
   document.getElementById('fecha').valueAsDate = document.getElementById('fecha').valueAsDate || new Date();
+  // Ensure currentPillar is consistent with currentCategory
+  const derivedPilar = getPilarIndexByCategoryIndex(state.currentCategory);
+  if (state.currentPillar === undefined || state.currentPillar === null) {
+    state.currentPillar = derivedPilar;
+  }
+  // If currentCategory does not belong to currentPillar, sync it
+  const catsForPilar = getCategoriesForPilar(state.currentPillar);
+  if (!catsForPilar.includes(state.currentCategory)) {
+    state.currentPillar = derivedPilar;
+  }
+  renderPilarTabs();
   renderCategoryTabs();
   renderQuestions(state.currentCategory);
   updateNavButtons();
@@ -628,7 +669,15 @@ function restoreFromPayload(payload) {
     }
   }
   if (payload.porte) restorePorteValues(payload.porte);
-  if (payload.answers) state.answers = payload.answers;
+  if (payload.answers) state.answers = migrateAnswersFormat(payload.answers);
+  if (payload.currentCategory !== undefined && payload.currentCategory !== null) {
+    state.currentCategory = payload.currentCategory;
+  }
+  if (payload.currentPillar !== undefined && payload.currentPillar !== null) {
+    state.currentPillar = payload.currentPillar;
+  } else {
+    state.currentPillar = getPilarIndexByCategoryIndex(state.currentCategory || 0);
+  }
 }
 
 async function goBackToHome() {
@@ -637,7 +686,7 @@ async function goBackToHome() {
     await syncToSupabase();
   }
   currentAssessmentId = null;
-  state = { currentStep: 1, currentCategory: 0, answers: {}, chartInstance: null, vendedorNombre: '' };
+  state = { currentStep: 1, currentCategory: 0, currentPillar: 0, answers: {}, chartInstance: null, chartInstancePilares: null, vendedorNombre: '' };
   showHome();
 }
 
@@ -759,6 +808,9 @@ function saveToStorage() {
     datos: getDatosValues(),
     porte: getPorteValues(),
     answers: state.answers,
+    currentCategory: state.currentCategory,
+    currentPillar: state.currentPillar,
+    currentStep: state.currentStep,
     timestamp: Date.now()
   };
   localStorage.setItem(key, JSON.stringify(data));
@@ -784,6 +836,17 @@ function loadFromStorage() {
     }
     if (data.porte) restorePorteValues(data.porte);
     if (data.answers) state.answers = migrateAnswersFormat(data.answers);
+    if (data.currentCategory !== undefined && data.currentCategory !== null) {
+      state.currentCategory = data.currentCategory;
+    }
+    if (data.currentPillar !== undefined && data.currentPillar !== null) {
+      state.currentPillar = data.currentPillar;
+    } else {
+      state.currentPillar = getPilarIndexByCategoryIndex(state.currentCategory || 0);
+    }
+    if (data.currentStep !== undefined && data.currentStep !== null) {
+      state.currentStep = data.currentStep;
+    }
   } catch(e) { /* ignore corrupt data */ }
 }
 
@@ -804,6 +867,7 @@ async function syncToSupabase() {
     answers: state.answers,
     currentStep: state.currentStep,
     currentCategory: state.currentCategory,
+    currentPillar: state.currentPillar,
     vendedor: state.vendedorNombre
   };
 
@@ -879,23 +943,89 @@ function validateDatos() {
   return valid;
 }
 
-// === CATEGORY TABS & QUESTIONS ===
+// === PILAR TABS & CATEGORY TABS ===
+function computePilarProgress(pilarIndex) {
+  const catIndexes = getCategoriesForPilar(pilarIndex);
+  let totalQ = 0, answeredQ = 0;
+  let completeCats = 0;
+  catIndexes.forEach(ci => {
+    const cat = ASSESSMENT_DATA.categories[ci];
+    const ans = cat.questions.filter(q => isQuestionFullyAnswered(q)).length;
+    totalQ += cat.questions.length;
+    answeredQ += ans;
+    if (ans === cat.questions.length) completeCats++;
+  });
+  return {
+    totalCats: catIndexes.length,
+    completeCats,
+    totalQ,
+    answeredQ,
+    percent: totalQ === 0 ? 0 : (answeredQ / totalQ) * 100
+  };
+}
+
+function renderPilarTabs() {
+  const container = document.getElementById('pilar-tabs');
+  if (!container) return;
+  container.innerHTML = PILARES.map((p, i) => {
+    const prog = computePilarProgress(i);
+    const isActive = i === state.currentPillar ? 'active' : '';
+    const isComplete = prog.answeredQ === prog.totalQ && prog.totalQ > 0 ? 'complete' : '';
+    const borderColor = p.color;
+    return `
+      <div class="pilar-tab ${isActive} ${isComplete}" onclick="switchPilar(${i})" title="${p.name}" style="border-left-color:${borderColor}; ${i === state.currentPillar ? `border-color:${borderColor};` : ''}">
+        <div class="pilar-tab-name">${i + 1}. ${p.name}</div>
+        <div class="pilar-tab-meta">${prog.completeCats}/${prog.totalCats} competencias · ${Math.round(prog.percent)}%</div>
+        <div class="pilar-tab-bar"><div class="pilar-tab-bar-fill" style="width:${prog.percent}%; background:${borderColor};"></div></div>
+      </div>
+    `;
+  }).join('');
+
+  const contextEl = document.getElementById('pilar-context');
+  if (contextEl) {
+    const p = PILARES[state.currentPillar];
+    contextEl.innerHTML = p ? `<strong>Pilar activo:</strong> ${p.name}` : '';
+    contextEl.style.borderLeftColor = p ? p.color : '';
+  }
+}
+
+function switchPilar(pIndex) {
+  if (pIndex === state.currentPillar) return;
+  saveToStorage();
+  state.currentPillar = pIndex;
+  const cats = getCategoriesForPilar(pIndex);
+  state.currentCategory = cats[0] !== undefined ? cats[0] : 0;
+  renderPilarTabs();
+  renderCategoryTabs();
+  renderQuestions(state.currentCategory);
+  window.scrollTo(0, 0);
+}
+
 function renderCategoryTabs() {
   const container = document.getElementById('category-tabs');
-  container.innerHTML = ASSESSMENT_DATA.categories.map((cat, i) => {
+  const catIndexes = getCategoriesForPilar(state.currentPillar);
+  container.innerHTML = catIndexes.map((globalIdx, localIdx) => {
+    const cat = ASSESSMENT_DATA.categories[globalIdx];
     const shortName = cat.name.length > 25 ? cat.name.substring(0, 22) + '...' : cat.name;
-    return `<div class="category-tab ${i === state.currentCategory ? 'active' : ''}" onclick="switchCategory(${i})" title="${cat.name}">${i + 1}. ${shortName}</div>`;
+    const active = globalIdx === state.currentCategory ? 'active' : '';
+    const answered = cat.questions.filter(q => isQuestionFullyAnswered(q)).length;
+    let statusClass = '';
+    if (answered === cat.questions.length) statusClass = 'complete';
+    else if (answered > 0) statusClass = 'has-answers';
+    return `<div class="category-tab ${active} ${statusClass}" onclick="switchCategory(${globalIdx})" title="${cat.name}">${localIdx + 1}. ${shortName}</div>`;
   }).join('');
 }
 
 function switchCategory(index) {
   saveToStorage();
   state.currentCategory = index;
-  document.querySelectorAll('.category-tab').forEach((tab, i) => {
-    tab.classList.remove('active');
-    if (i === index) tab.classList.add('active');
-    updateTabStatus(tab, i);
-  });
+  // Ensure pilar consistency
+  const derivedPilar = getPilarIndexByCategoryIndex(index);
+  if (derivedPilar !== state.currentPillar) {
+    state.currentPillar = derivedPilar;
+    renderPilarTabs();
+  }
+  renderCategoryTabs();
   renderQuestions(index);
 }
 
@@ -969,9 +1099,12 @@ function renderQuestions(catIndex) {
     `;
   }).join('');
 
-  const totalCats = ASSESSMENT_DATA.categories.length;
-  const prevDisabled = catIndex === 0 ? 'disabled' : '';
-  const nextLabel = catIndex === totalCats - 1 ? 'Ver Resultados →' : 'Siguiente Competencia →';
+  const pilarCatIndexes = getCategoriesForPilar(state.currentPillar);
+  const currentPos = pilarCatIndexes.indexOf(catIndex);
+  const isFirstGlobal = state.currentPillar === 0 && currentPos === 0;
+  const isLastGlobal = state.currentPillar === PILARES.length - 1 && currentPos === pilarCatIndexes.length - 1;
+  const prevDisabled = isFirstGlobal ? 'disabled' : '';
+  const nextLabel = isLastGlobal ? 'Ver Resultados →' : 'Siguiente Competencia →';
   container.innerHTML += `
     <div class="category-nav-buttons">
       <button type="button" class="btn-secondary" ${prevDisabled} onclick="navCategory(-1)">← Competencia Anterior</button>
@@ -981,14 +1114,30 @@ function renderQuestions(catIndex) {
 }
 
 function navCategory(direction) {
-  const totalCats = ASSESSMENT_DATA.categories.length;
-  const newIndex = state.currentCategory + direction;
-  if (newIndex >= 0 && newIndex < totalCats) {
-    switchCategory(newIndex);
+  const pilarCatIndexes = getCategoriesForPilar(state.currentPillar);
+  const currentPos = pilarCatIndexes.indexOf(state.currentCategory);
+  const nextPos = currentPos + direction;
+
+  if (nextPos >= 0 && nextPos < pilarCatIndexes.length) {
+    switchCategory(pilarCatIndexes[nextPos]);
     window.scrollTo(0, 0);
-  } else if (newIndex >= totalCats) {
-    nextStep();
+    return;
   }
+
+  const nextPilar = state.currentPillar + direction;
+  if (nextPilar >= 0 && nextPilar < PILARES.length) {
+    saveToStorage();
+    state.currentPillar = nextPilar;
+    const nextCats = getCategoriesForPilar(nextPilar);
+    state.currentCategory = direction > 0 ? nextCats[0] : nextCats[nextCats.length - 1];
+    renderPilarTabs();
+    renderCategoryTabs();
+    renderQuestions(state.currentCategory);
+    window.scrollTo(0, 0);
+    return;
+  }
+
+  if (direction > 0) nextStep();
 }
 
 function renderLevelDetails(q) {
@@ -1016,6 +1165,7 @@ function setAnswer(qId, value) {
 
   document.getElementById(`card-${qId}`).classList.add('answered');
   updateCategoryProgress();
+  renderPilarTabs();
   saveToStorage();
 }
 
@@ -1032,7 +1182,8 @@ function updateCategoryProgress() {
   progressEl.querySelector('span').textContent = `${cat.name} — ${answered}/${cat.questions.length} respondidas (Peso: ${Math.round(cat.weightTotal * 100)}%)`;
   progressEl.querySelector('.progress-fill-inner').style.width = `${(answered/cat.questions.length)*100}%`;
 
-  document.querySelectorAll('.category-tab').forEach((tab, i) => updateTabStatus(tab, i));
+  renderCategoryTabs();
+  renderPilarTabs();
 }
 
 function migrateAnswersFormat(answers) {
@@ -1092,6 +1243,28 @@ function calculateResults() {
   return { categorias: results, totalGeneral };
 }
 
+function calculatePilarResults(baseResults) {
+  const results = baseResults || calculateResults();
+  const pilarRows = PILARES.map(pilar => {
+    const cats = ASSESSMENT_DATA.categories.filter(c => pilar.categoryKeys.includes(c.key));
+    const catNames = cats.map(c => c.name);
+    const matched = results.categorias.filter(r => catNames.includes(r.name));
+    const pesoPilar = cats.reduce((s, c) => s + (c.weightTotal || 0), 0);
+    const contribucionTotal = matched.reduce((s, r) => s + (r.scoreTotal || 0), 0);
+    const scorePilar = pesoPilar > 0 ? contribucionTotal / pesoPilar : 0;
+    return {
+      key: pilar.key,
+      name: pilar.name,
+      color: pilar.color,
+      colorRgba: pilar.colorRgba,
+      pesoPilar,
+      contribucionTotal,
+      scorePilar
+    };
+  });
+  return pilarRows;
+}
+
 // === RESULTS RENDERING ===
 function renderResults() {
   const datos = getDatosValues();
@@ -1102,9 +1275,27 @@ function renderResults() {
   `;
 
   const results = calculateResults();
+  const pilarResults = calculatePilarResults(results);
   document.getElementById('results-score').innerHTML = `
     <div class="score-label">Puntuación Total del Assessment</div>
     <div class="score-value">${Math.round(results.totalGeneral * 100)}%</div>
+  `;
+
+  const pilarBody = document.querySelector('#results-pilares-table tbody');
+  pilarBody.innerHTML = pilarResults.map(r => `
+    <tr>
+      <td>${r.name}</td>
+      <td>${Math.round(r.pesoPilar * 100)}%</td>
+      <td>${Math.round(r.scorePilar * 100)}%</td>
+      <td>${Math.round(r.contribucionTotal * 100)}%</td>
+    </tr>
+  `).join('') + `
+    <tr>
+      <td>TOTAL</td>
+      <td>${Math.round(pilarResults.reduce((s, p) => s + p.pesoPilar, 0) * 100)}%</td>
+      <td>—</td>
+      <td>${Math.round(pilarResults.reduce((s, p) => s + p.contribucionTotal, 0) * 100)}%</td>
+    </tr>
   `;
 
   const tbody = document.querySelector('#results-table tbody');
@@ -1122,7 +1313,55 @@ function renderResults() {
     </tr>
   `;
 
+  renderRadarChartPilares(pilarResults);
   renderRadarChart(results);
+}
+
+function renderRadarChartPilares(pilarResults) {
+  const canvas = document.getElementById('radarChartPilares');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (state.chartInstancePilares) state.chartInstancePilares.destroy();
+
+  state.chartInstancePilares = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: pilarResults.map(r => r.name.length > 22 ? r.name.substring(0, 20) + '...' : r.name),
+      datasets: [{
+        label: 'Calificación por Pilar',
+        data: pilarResults.map(r => r.scorePilar),
+        backgroundColor: 'rgba(0, 104, 180, 0.18)',
+        borderColor: 'rgb(0, 104, 180)',
+        borderWidth: 2,
+        pointBackgroundColor: pilarResults.map(r => r.color),
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      scales: {
+        r: {
+          min: 0,
+          max: 1,
+          ticks: {
+            stepSize: 0.25,
+            callback: v => Math.round(v * 100) + '%',
+            font: { size: 10 }
+          },
+          pointLabels: { font: { size: 9 } }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => Math.round(ctx.raw * 100) + '%'
+          }
+        }
+      }
+    }
+  });
 }
 
 function renderRadarChart(results) {
@@ -1178,6 +1417,7 @@ async function exportExcel() {
   const datos = getDatosValues();
   const porte = getPorteValues();
   const results = calculateResults();
+  const pilarResults = calculatePilarResults(results);
   const wb = new ExcelJS.Workbook();
 
   const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
@@ -1328,56 +1568,65 @@ async function exportExcel() {
   const colHeaderFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4CAF50' } };
   const colHeaderFont = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
 
-  ASSESSMENT_DATA.categories.forEach((cat, catIdx) => {
-    // Category header row
-    const catRow = wsAssess.addRow([`${catIdx + 1}`, cat.name.toUpperCase(), '', '', '', '', '', '', '', '', '', '']);
-    catRow.eachCell(cell => { cell.font = catHeaderFont; cell.fill = catHeaderFill; cell.border = borders; });
-    wsAssess.mergeCells(catRow.number, 2, catRow.number, 12);
+  PILARES.forEach((pilar, pIdx) => {
+    const pilarRow = wsAssess.addRow([`${pIdx + 1}`, `PILAR: ${pilar.name.toUpperCase()}`, '', '', '', '', '', '', '', '', '', '']);
+    pilarRow.eachCell(cell => { cell.font = { ...catHeaderFont, size: 12 }; cell.fill = headerFill; cell.border = borders; });
+    wsAssess.mergeCells(pilarRow.number, 2, pilarRow.number, 12);
 
-    // Column headers row
-    const colHdr = wsAssess.addRow(['#', 'Aspecto a evaluar', 'Pregunta', 'Calificación', 'Observaciones', 'Bajo - 0%', 'Mediano - 50%', 'Alto - 100%', 'Ponderación total', 'Ponderación competencia', 'Calificación ponderada sección', 'Calificación ponderada total']);
-    colHdr.eachCell(cell => { cell.font = colHeaderFont; cell.fill = colHeaderFill; cell.border = borders; cell.alignment = { wrapText: true, vertical: 'middle' }; });
+    const cats = pilar.categoryKeys
+      .map(k => ASSESSMENT_DATA.categories.find(c => c.key === k))
+      .filter(Boolean);
 
-    // Data rows
-    cat.questions.forEach(q => {
-      const answer = state.answers[q.id] || {};
-      const val = answer.value ? getCalificacionValue(answer.value) : null;
-      const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo - 0%' : answer.value === 'mediano' ? 'Mediano - 50%' : 'Alto - 100%') : '';
-      const pondTotal = q.ponderacionTotal;
-      const pondComp = q.ponderacionCompetencia;
-      const califPondSeccion = val !== null ? val * pondComp : '';
-      const califPondTotal = val !== null ? val * pondTotal : '';
+    cats.forEach((cat, catIdx) => {
+      // Category header row
+      const catRow = wsAssess.addRow([`${catIdx + 1}`, cat.name.toUpperCase(), '', '', '', '', '', '', '', '', '', '']);
+      catRow.eachCell(cell => { cell.font = catHeaderFont; cell.fill = catHeaderFill; cell.border = borders; });
+      wsAssess.mergeCells(catRow.number, 2, catRow.number, 12);
 
-      const r = wsAssess.addRow([
-        q.id,
-        q.aspecto,
-        q.pregunta.replace(/\n/g, '\n'),
-        calLabel,
-        answer.observaciones || '',
-        formatCriteriaText(q.bajo),
-        formatCriteriaText(q.mediano),
-        formatCriteriaText(q.alto),
-        pondTotal,
-        pondComp,
-        califPondSeccion,
-        califPondTotal
-      ]);
+      // Column headers row
+      const colHdr = wsAssess.addRow(['#', 'Aspecto a evaluar', 'Pregunta', 'Calificación', 'Observaciones', 'Bajo - 0%', 'Mediano - 50%', 'Alto - 100%', 'Ponderación total', 'Ponderación competencia', 'Calificación ponderada sección', 'Calificación ponderada total']);
+      colHdr.eachCell(cell => { cell.font = colHeaderFont; cell.fill = colHeaderFill; cell.border = borders; cell.alignment = { wrapText: true, vertical: 'middle' }; });
 
-      r.eachCell(cell => { cell.border = borders; cell.alignment = { wrapText: true, vertical: 'top' }; });
-      r.getCell(1).font = { bold: true };
-      r.getCell(2).font = { bold: true };
-      r.getCell(9).numFmt = '0%';
-      r.getCell(10).numFmt = '0%';
-      if (califPondSeccion !== '') r.getCell(11).numFmt = '0%';
-      if (califPondTotal !== '') r.getCell(12).numFmt = '0%';
+      // Data rows
+      cat.questions.forEach(q => {
+        const answer = state.answers[q.id] || {};
+        const val = answer.value ? getCalificacionValue(answer.value) : null;
+        const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo - 0%' : answer.value === 'mediano' ? 'Mediano - 50%' : 'Alto - 100%') : '';
+        const pondTotal = q.ponderacionTotal;
+        const pondComp = q.ponderacionCompetencia;
+        const califPondSeccion = val !== null ? val * pondComp : '';
+        const califPondTotal = val !== null ? val * pondTotal : '';
 
-      if (answer.value === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' }, bold: true };
-      else if (answer.value === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' }, bold: true };
-      else if (answer.value === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' }, bold: true };
+        const r = wsAssess.addRow([
+          q.id,
+          q.aspecto,
+          q.pregunta.replace(/\n/g, '\n'),
+          calLabel,
+          answer.observaciones || '',
+          formatCriteriaText(q.bajo),
+          formatCriteriaText(q.mediano),
+          formatCriteriaText(q.alto),
+          pondTotal,
+          pondComp,
+          califPondSeccion,
+          califPondTotal
+        ]);
+
+        r.eachCell(cell => { cell.border = borders; cell.alignment = { wrapText: true, vertical: 'top' }; });
+        r.getCell(1).font = { bold: true };
+        r.getCell(2).font = { bold: true };
+        r.getCell(9).numFmt = '0%';
+        r.getCell(10).numFmt = '0%';
+        if (califPondSeccion !== '') r.getCell(11).numFmt = '0%';
+        if (califPondTotal !== '') r.getCell(12).numFmt = '0%';
+
+        if (answer.value === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' }, bold: true };
+        else if (answer.value === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' }, bold: true };
+        else if (answer.value === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' }, bold: true };
+      });
+
+      wsAssess.addRow([]);
     });
-
-    // Empty row between categories
-    wsAssess.addRow([]);
   });
 
   // --- SOLAPA 4: Resultados ---
@@ -1413,6 +1662,31 @@ async function exportExcel() {
   totalRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
   totalRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
 
+  wsRes.addRow([]);
+  const pTitle = wsRes.addRow(['RESULTADOS POR PILAR', '', '']);
+  pTitle.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF0068B4' } };
+  wsRes.addRow([]);
+  const pHdr = wsRes.addRow(['Pilar', 'Peso', 'Score del Pilar']);
+  pHdr.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
+
+  pilarResults.forEach((r, i) => {
+    const row = wsRes.addRow([r.name, r.pesoPilar, r.scorePilar]);
+    row.eachCell(cell => { cell.border = borders; });
+    row.getCell(2).numFmt = '0%';
+    row.getCell(3).numFmt = '0%';
+    if (i % 2 === 0) row.getCell(1).fill = lightFill;
+  });
+
+  const pTotalRow = wsRes.addRow([
+    'TOTAL PILARES',
+    pilarResults.reduce((s, p) => s + p.pesoPilar, 0),
+    ''
+  ]);
+  pTotalRow.getCell(1).font = { bold: true };
+  pTotalRow.getCell(2).font = { bold: true };
+  pTotalRow.getCell(2).numFmt = '0%';
+  pTotalRow.eachCell(cell => { cell.border = borders; });
+
   // --- Radar chart as image ---
   const radarCanvas = document.getElementById('radarChart');
   if (radarCanvas) {
@@ -1425,6 +1699,19 @@ async function exportExcel() {
       wsRes.addImage(imageId, {
         tl: { col: 0, row: chartStartRow - 1 },
         ext: { width: 480, height: 480 }
+      });
+    } catch(e) { /* skip chart if capture fails */ }
+  }
+
+  const radarPilarCanvas = document.getElementById('radarChartPilares');
+  if (radarPilarCanvas) {
+    try {
+      const radarBase64 = radarPilarCanvas.toDataURL('image/png').split(',')[1];
+      const imageId = wb.addImage({ base64: radarBase64, extension: 'png' });
+      const chartStartRow = wsRes.rowCount + 2;
+      wsRes.addImage(imageId, {
+        tl: { col: 8, row: chartStartRow - 1 },
+        ext: { width: 420, height: 420 }
       });
     } catch(e) { /* skip chart if capture fails */ }
   }
@@ -1589,52 +1876,62 @@ async function generateExcelBuffer(assessment) {
   const colHeaderFillBuf = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4CAF50' } };
   const colHeaderFontBuf = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
 
-  ASSESSMENT_DATA.categories.forEach((cat, catIdx) => {
-    const catRow = wsAssess.addRow([`${catIdx + 1}`, cat.name.toUpperCase(), '', '', '', '', '', '', '', '', '', '']);
-    catRow.eachCell(cell => { cell.font = catHeaderFontBuf; cell.fill = catHeaderFillBuf; cell.border = borders; });
-    wsAssess.mergeCells(catRow.number, 2, catRow.number, 12);
+  PILARES.forEach((pilar, pIdx) => {
+    const pilarRow = wsAssess.addRow([`${pIdx + 1}`, `PILAR: ${pilar.name.toUpperCase()}`, '', '', '', '', '', '', '', '', '', '']);
+    pilarRow.eachCell(cell => { cell.font = { ...catHeaderFontBuf, size: 12 }; cell.fill = headerFill; cell.border = borders; });
+    wsAssess.mergeCells(pilarRow.number, 2, pilarRow.number, 12);
 
-    const colHdr = wsAssess.addRow(['#', 'Aspecto a evaluar', 'Pregunta', 'Calificación', 'Observaciones', 'Bajo - 0%', 'Mediano - 50%', 'Alto - 100%', 'Ponderación total', 'Ponderación competencia', 'Calificación ponderada sección', 'Calificación ponderada total']);
-    colHdr.eachCell(cell => { cell.font = colHeaderFontBuf; cell.fill = colHeaderFillBuf; cell.border = borders; cell.alignment = { wrapText: true, vertical: 'middle' }; });
+    const cats = pilar.categoryKeys
+      .map(k => ASSESSMENT_DATA.categories.find(c => c.key === k))
+      .filter(Boolean);
 
-    cat.questions.forEach(q => {
-      const answer = answers[q.id] || {};
-      const val = answer.value ? getCalificacionValue(answer.value) : null;
-      const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo - 0%' : answer.value === 'mediano' ? 'Mediano - 50%' : 'Alto - 100%') : '';
-      const pondTotal = q.ponderacionTotal;
-      const pondComp = q.ponderacionCompetencia;
-      const califPondSeccion = val !== null ? val * pondComp : '';
-      const califPondTotal = val !== null ? val * pondTotal : '';
+    cats.forEach((cat, catIdx) => {
+      const catRow = wsAssess.addRow([`${catIdx + 1}`, cat.name.toUpperCase(), '', '', '', '', '', '', '', '', '', '']);
+      catRow.eachCell(cell => { cell.font = catHeaderFontBuf; cell.fill = catHeaderFillBuf; cell.border = borders; });
+      wsAssess.mergeCells(catRow.number, 2, catRow.number, 12);
 
-      const r = wsAssess.addRow([
-        q.id,
-        q.aspecto,
-        q.pregunta.replace(/\n/g, '\n'),
-        calLabel,
-        answer.observaciones || '',
-        formatCriteriaText(q.bajo),
-        formatCriteriaText(q.mediano),
-        formatCriteriaText(q.alto),
-        pondTotal,
-        pondComp,
-        califPondSeccion,
-        califPondTotal
-      ]);
+      const colHdr = wsAssess.addRow(['#', 'Aspecto a evaluar', 'Pregunta', 'Calificación', 'Observaciones', 'Bajo - 0%', 'Mediano - 50%', 'Alto - 100%', 'Ponderación total', 'Ponderación competencia', 'Calificación ponderada sección', 'Calificación ponderada total']);
+      colHdr.eachCell(cell => { cell.font = colHeaderFontBuf; cell.fill = colHeaderFillBuf; cell.border = borders; cell.alignment = { wrapText: true, vertical: 'middle' }; });
 
-      r.eachCell(cell => { cell.border = borders; cell.alignment = { wrapText: true, vertical: 'top' }; });
-      r.getCell(1).font = { bold: true };
-      r.getCell(2).font = { bold: true };
-      r.getCell(9).numFmt = '0%';
-      r.getCell(10).numFmt = '0%';
-      if (califPondSeccion !== '') r.getCell(11).numFmt = '0%';
-      if (califPondTotal !== '') r.getCell(12).numFmt = '0%';
+      cat.questions.forEach(q => {
+        const answer = answers[q.id] || {};
+        const val = answer.value ? getCalificacionValue(answer.value) : null;
+        const calLabel = answer.value ? (answer.value === 'bajo' ? 'Bajo - 0%' : answer.value === 'mediano' ? 'Mediano - 50%' : 'Alto - 100%') : '';
+        const pondTotal = q.ponderacionTotal;
+        const pondComp = q.ponderacionCompetencia;
+        const califPondSeccion = val !== null ? val * pondComp : '';
+        const califPondTotal = val !== null ? val * pondTotal : '';
 
-      if (answer.value === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' }, bold: true };
-      else if (answer.value === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' }, bold: true };
-      else if (answer.value === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' }, bold: true };
+        const r = wsAssess.addRow([
+          q.id,
+          q.aspecto,
+          q.pregunta.replace(/\n/g, '\n'),
+          calLabel,
+          answer.observaciones || '',
+          formatCriteriaText(q.bajo),
+          formatCriteriaText(q.mediano),
+          formatCriteriaText(q.alto),
+          pondTotal,
+          pondComp,
+          califPondSeccion,
+          califPondTotal
+        ]);
+
+        r.eachCell(cell => { cell.border = borders; cell.alignment = { wrapText: true, vertical: 'top' }; });
+        r.getCell(1).font = { bold: true };
+        r.getCell(2).font = { bold: true };
+        r.getCell(9).numFmt = '0%';
+        r.getCell(10).numFmt = '0%';
+        if (califPondSeccion !== '') r.getCell(11).numFmt = '0%';
+        if (califPondTotal !== '') r.getCell(12).numFmt = '0%';
+
+        if (answer.value === 'bajo') r.getCell(4).font = { color: { argb: 'FFE53935' }, bold: true };
+        else if (answer.value === 'mediano') r.getCell(4).font = { color: { argb: 'FFFB8C00' }, bold: true };
+        else if (answer.value === 'alto') r.getCell(4).font = { color: { argb: 'FF43A047' }, bold: true };
+      });
+
+      wsAssess.addRow([]);
     });
-
-    wsAssess.addRow([]);
   });
 
   // --- SOLAPA 4: Resultados ---
@@ -1667,6 +1964,28 @@ async function generateExcelBuffer(assessment) {
   totalRow.eachCell(cell => { cell.border = borders; });
   totalRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
   totalRow.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF92D050' } };
+
+  const bufPilarResults = calculatePilarResults(bufResults);
+  wsRes.addRow([]);
+  const pTitle = wsRes.addRow(['RESULTADOS POR PILAR', '', '']);
+  pTitle.getCell(1).font = { bold: true, size: 12, color: { argb: 'FF0068B4' } };
+  wsRes.addRow([]);
+  const pHdr = wsRes.addRow(['Pilar', 'Peso', 'Score del Pilar']);
+  pHdr.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
+
+  bufPilarResults.forEach((r, i) => {
+    const row = wsRes.addRow([r.name, r.pesoPilar, r.scorePilar]);
+    row.eachCell(cell => { cell.border = borders; });
+    row.getCell(2).numFmt = '0%';
+    row.getCell(3).numFmt = '0%';
+    if (i % 2 === 0) row.getCell(1).fill = lightFill;
+  });
+
+  const pTotalRow = wsRes.addRow(['TOTAL PILARES', bufPilarResults.reduce((s, p) => s + p.pesoPilar, 0), '']);
+  pTotalRow.getCell(1).font = { bold: true };
+  pTotalRow.getCell(2).font = { bold: true };
+  pTotalRow.getCell(2).numFmt = '0%';
+  pTotalRow.eachCell(cell => { cell.border = borders; });
 
   const buffer = await wb.xlsx.writeBuffer();
   const filename = `Assessment_${(datos.nombre_distribuidor || 'sin_nombre').replace(/\s+/g, '_')}_${datos.fecha || 'sin_fecha'}.xlsx`;
@@ -1723,6 +2042,7 @@ async function submitAssessment() {
     answers: state.answers,
     currentStep: state.currentStep,
     currentCategory: state.currentCategory,
+    currentPillar: state.currentPillar,
     resultados: results
   };
 

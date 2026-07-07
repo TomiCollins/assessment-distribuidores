@@ -243,6 +243,99 @@ h2 {
   background: rgba(211,47,47,0.1);
 }
 
+/* Pilar Tabs (Step 3) */
+.pilar-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 900px) {
+  .pilar-tabs { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .pilar-tabs { grid-template-columns: 1fr; }
+}
+
+.pilar-tab {
+  position: relative;
+  padding: 0.7rem 0.9rem;
+  border-radius: 8px;
+  background: var(--card-bg);
+  border: 2px solid var(--border-color);
+  border-left-width: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 74px;
+}
+
+.pilar-tab:hover {
+  border-color: var(--medium-text);
+}
+
+.pilar-tab.active {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  transform: translateY(-1px);
+}
+
+.pilar-tab .pilar-tab-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--dark-text);
+  line-height: 1.2;
+}
+
+.pilar-tab .pilar-tab-meta {
+  font-size: 0.72rem;
+  color: var(--medium-text);
+}
+
+.pilar-tab .pilar-tab-bar {
+  height: 5px;
+  background: var(--border-color);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.pilar-tab .pilar-tab-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.pilar-tab.complete {
+  background: rgba(0,130,75,0.08);
+}
+
+.pilar-context {
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.75rem;
+  background: var(--card-bg);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--medium-text);
+  box-shadow: var(--shadow);
+  border-left: 4px solid var(--primary-blue);
+}
+
+.pilar-context strong {
+  color: var(--dark-text);
+}
+
+/* Results subtitle */
+.results-subtitle {
+  margin: 1.75rem 0 0.75rem;
+  font-size: 1.05rem;
+  color: var(--dark-text);
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
 /* Category Tabs */
 .category-tabs {
   display: flex;
@@ -808,6 +901,7 @@ html {
   .form-grid { grid-template-columns: 1fr; }
   .category-tabs { gap: 0.3rem; }
   .category-tab { font-size: 0.7rem; padding: 0.4rem 0.5rem; }
+  .pilar-tab { min-height: auto; }
 }
 
 /* Overlay (shared login) */

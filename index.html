@@ -327,6 +327,8 @@
     <!-- STEP 3: Competencias -->
     <section class="step-panel" id="step-3">
       <h2>Evaluación de Competencias</h2>
+      <div class="pilar-tabs" id="pilar-tabs"></div>
+      <div class="pilar-context" id="pilar-context"></div>
       <div class="category-tabs" id="category-tabs"></div>
       <div class="category-progress" id="category-progress"></div>
       <div class="questions-container" id="questions-container"></div>
@@ -337,6 +339,28 @@
       <h2>Resultados del Assessment</h2>
       <div class="results-header" id="results-header"></div>
       <div class="results-score" id="results-score"></div>
+
+      <h3 class="results-subtitle">Resumen por Pilar</h3>
+      <div class="results-grid">
+        <div class="results-table-container">
+          <table class="results-table" id="results-pilares-table">
+            <thead>
+              <tr>
+                <th>Pilar</th>
+                <th>Peso</th>
+                <th>Score del Pilar</th>
+                <th>Contribución al Total</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="results-chart-container">
+          <canvas id="radarChartPilares"></canvas>
+        </div>
+      </div>
+
+      <h3 class="results-subtitle">Resumen por Competencia</h3>
       <div class="results-grid">
         <div class="results-table-container">
           <table class="results-table" id="results-table">

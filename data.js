@@ -1447,3 +1447,64 @@ const ASSESSMENT_DATA = {
     }
   ]
 };
+
+const PILARES = [
+  {
+    id: "ec",
+    key: "excelencia_comercial",
+    name: "Excelencia Comercial",
+    shortName: "Excelencia Comercial",
+    color: "#0068B4",
+    colorRgba: "rgba(0, 104, 180, 0.25)",
+    categoryKeys: ["vision_estrategica", "gestion_comercial", "generacion_demanda"]
+  },
+  {
+    id: "eo",
+    key: "excelencia_operacional",
+    name: "Excelencia Operacional",
+    shortName: "Excelencia Operacional",
+    color: "#00824B",
+    colorRgba: "rgba(0, 130, 75, 0.25)",
+    categoryKeys: ["recursos_humanos", "competencia_financiera", "logistica_operaciones", "seguridad_sustentabilidad"]
+  },
+  {
+    id: "cx",
+    key: "experiencia_cliente",
+    name: "CX · Experiencia Cliente",
+    shortName: "CX",
+    color: "#F57C00",
+    colorRgba: "rgba(245, 124, 0, 0.25)",
+    categoryKeys: ["cobertura_acceso"]
+  },
+  {
+    id: "dig",
+    key: "digitalizacion_nbm",
+    name: "Digitalización y Nuevos Modelos de Negocio",
+    shortName: "Digital & NBM",
+    color: "#7B1FA2",
+    colorRgba: "rgba(123, 31, 162, 0.25)",
+    categoryKeys: ["digitalizacion"]
+  }
+];
+
+// Helpers para navegar pilares/categorías
+function getPilarByCategoryKey(catKey) {
+  return PILARES.find(p => p.categoryKeys.includes(catKey));
+}
+
+function getPilarIndexByCategoryIndex(catIndex) {
+  const cat = ASSESSMENT_DATA.categories[catIndex];
+  if (!cat) return 0;
+  const pilar = getPilarByCategoryKey(cat.key);
+  if (!pilar) return 0;
+  return PILARES.indexOf(pilar);
+}
+
+function getCategoriesForPilar(pilarIndex) {
+  const pilar = PILARES[pilarIndex];
+  if (!pilar) return [];
+  return pilar.categoryKeys
+    .map(k => ASSESSMENT_DATA.categories.findIndex(c => c.key === k))
+    .filter(i => i >= 0);
+}
+
