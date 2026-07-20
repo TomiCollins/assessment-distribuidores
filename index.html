@@ -40,11 +40,11 @@
       <form id="change-password-form" onsubmit="handleChangePassword(event)">
         <div class="form-group">
           <label for="new-password">Nueva contraseña</label>
-          <input type="password" id="new-password" required minlength="6" placeholder="Mínimo 6 caracteres">
+          <input type="password" id="new-password" required minlength="8" placeholder="Mínimo 8 caracteres, mayúscula, minúscula, número y símbolo">
         </div>
         <div class="form-group">
           <label for="confirm-password">Repetir contraseña</label>
-          <input type="password" id="confirm-password" required minlength="6" placeholder="Repetí la contraseña">
+          <input type="password" id="confirm-password" required minlength="8" placeholder="Repetí la contraseña">
         </div>
         <button type="submit" class="btn-primary btn-full-width" id="change-password-btn">Guardar contraseña</button>
       </form>

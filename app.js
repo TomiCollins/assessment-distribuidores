@@ -1,6 +1,6 @@
 // === SUPABASE CONFIG ===
-const SUPABASE_URL = 'https://olkqjragrvnneubzgqjd.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sa3FqcmFncnZubmV1YnpncWpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMzE5MjksImV4cCI6MjA5NTYwNzkyOX0.5bj_dqxidWfdml0fOS0hAOr_6512XT5MOcJY9T6pu0E';
+const SUPABASE_URL = window.APP_CONFIG?.SUPABASE_URL || 'https://olkqjragrvnneubzgqjd.supabase.co';
+const SUPABASE_ANON_KEY = window.APP_CONFIG?.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sa3FqcmFncnZubmV1YnpncWpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMzE5MjksImV4cCI6MjA5NTYwNzkyOX0.5bj_dqxidWfdml0fOS0hAOr_6512XT5MOcJY9T6pu0E';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // === STATE ===
@@ -18,6 +18,108 @@ let currentUser = null;
 let currentAssessmentId = null;
 let syncTimer = null;
 let isPasswordRecoveryFlow = false;
+
+const LOGIN_GUARD = {
+  maxFailedAttempts: 10,
+  lockMinutes: 15,
+  windowMinutes: 30,
+  storageKey: 'assessment_login_guard_v1'
+};
+
+function getLoginGuardMap() {
+  try {
+    const raw = localStorage.getItem(LOGIN_GUARD.storageKey);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function setLoginGuardMap(map) {
+  try {
+    localStorage.setItem(LOGIN_GUARD.storageKey, JSON.stringify(map));
+  } catch {
+    // Ignore storage errors (private mode/quota)
+  }
+}
+
+function normalizeEmailForGuard(email) {
+  return (email || '').trim().toLowerCase();
+}
+
+function getLoginRecord(email) {
+  const now = Date.now();
+  const key = normalizeEmailForGuard(email);
+  const map = getLoginGuardMap();
+  const rec = map[key] || { failed: 0, firstFailAt: 0, lockUntil: 0 };
+
+  if (rec.lockUntil && now > rec.lockUntil) {
+    rec.failed = 0;
+    rec.firstFailAt = 0;
+    rec.lockUntil = 0;
+    map[key] = rec;
+    setLoginGuardMap(map);
+  }
+
+  if (rec.firstFailAt && now - rec.firstFailAt > LOGIN_GUARD.windowMinutes * 60 * 1000) {
+    rec.failed = 0;
+    rec.firstFailAt = 0;
+    rec.lockUntil = 0;
+    map[key] = rec;
+    setLoginGuardMap(map);
+  }
+
+  return rec;
+}
+
+function registerFailedLogin(email) {
+  const now = Date.now();
+  const key = normalizeEmailForGuard(email);
+  const map = getLoginGuardMap();
+  const rec = map[key] || { failed: 0, firstFailAt: 0, lockUntil: 0 };
+
+  if (!rec.firstFailAt || now - rec.firstFailAt > LOGIN_GUARD.windowMinutes * 60 * 1000) {
+    rec.failed = 0;
+    rec.firstFailAt = now;
+    rec.lockUntil = 0;
+  }
+
+  rec.failed += 1;
+  if (rec.failed >= LOGIN_GUARD.maxFailedAttempts) {
+    rec.lockUntil = now + LOGIN_GUARD.lockMinutes * 60 * 1000;
+  }
+
+  map[key] = rec;
+  setLoginGuardMap(map);
+  return rec;
+}
+
+function clearFailedLogins(email) {
+  const key = normalizeEmailForGuard(email);
+  const map = getLoginGuardMap();
+  if (map[key]) {
+    delete map[key];
+    setLoginGuardMap(map);
+  }
+}
+
+function formatRemainingLock(ms) {
+  const totalSeconds = Math.max(1, Math.ceil(ms / 1000));
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  if (mins <= 0) return `${secs}s`;
+  return `${mins}m ${secs}s`;
+}
+
+function validateStrongPassword(password) {
+  const errors = [];
+  if (password.length < 8) errors.push('al menos 8 caracteres');
+  if (!/[A-Z]/.test(password)) errors.push('una mayúscula');
+  if (!/[a-z]/.test(password)) errors.push('una minúscula');
+  if (!/[0-9]/.test(password)) errors.push('un número');
+  if (!/[^A-Za-z0-9]/.test(password)) errors.push('un símbolo');
+  return errors;
+}
 
 // === INITIALIZATION ===
 document.addEventListener('DOMContentLoaded', () => {
@@ -79,6 +181,14 @@ async function handleLogin(e) {
   const password = document.getElementById('login-password').value;
   const statusEl = document.getElementById('login-status');
 
+  const rec = getLoginRecord(email);
+  const now = Date.now();
+  if (rec.lockUntil && rec.lockUntil > now) {
+    statusEl.textContent = `Demasiados intentos fallidos. Esperá ${formatRemainingLock(rec.lockUntil - now)} antes de intentar nuevamente.`;
+    statusEl.className = 'login-status error';
+    return;
+  }
+
   statusEl.textContent = 'Iniciando sesión...';
   statusEl.className = 'login-status loading';
   document.getElementById('login-btn').disabled = true;
@@ -88,10 +198,18 @@ async function handleLogin(e) {
   document.getElementById('login-btn').disabled = false;
 
   if (error) {
-    statusEl.textContent = 'Email o contraseña incorrectos.';
+    const failRec = registerFailedLogin(email);
+    if (failRec.lockUntil && failRec.lockUntil > Date.now()) {
+      statusEl.textContent = `Cuenta temporalmente bloqueada por seguridad. Reintentá en ${formatRemainingLock(failRec.lockUntil - Date.now())}.`;
+    } else {
+      const restantes = Math.max(0, LOGIN_GUARD.maxFailedAttempts - failRec.failed);
+      statusEl.textContent = `Email o contraseña incorrectos. Intentos restantes antes de bloqueo temporal: ${restantes}.`;
+    }
     statusEl.className = 'login-status error';
     return;
   }
+
+  clearFailedLogins(email);
 
   currentUser = data.user;
   statusEl.className = 'login-status';
@@ -124,8 +242,9 @@ async function handleChangePassword(e) {
     return;
   }
 
-  if (newPass.length < 6) {
-    statusEl.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+  const passErrors = validateStrongPassword(newPass);
+  if (passErrors.length > 0) {
+    statusEl.textContent = `La contraseña debe incluir ${passErrors.join(', ')}.`;
     statusEl.className = 'login-status error';
     return;
   }
