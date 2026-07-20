@@ -533,12 +533,14 @@ async function loadAdminAssessments() {
   const { data, error } = await supabaseClient.rpc('get_all_assessments');
   const container = document.getElementById('admin-content');
 
-  if (error || !data || data.length === 0) {
+  const completedAssessments = (data || []).filter(a => a.status === 'completado');
+
+  if (error || completedAssessments.length === 0) {
     container.innerHTML = '<div class="home-empty-state">No hay assessments completados de ningún usuario.</div>';
     return;
   }
 
-  adminAssessments = data;
+  adminAssessments = completedAssessments;
   renderAdminBUs();
 }
 
