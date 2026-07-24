@@ -195,6 +195,13 @@ h2 {
   margin-bottom: 0.75rem;
 }
 
+.data-table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 0.75rem;
+}
+
 .data-table th {
   text-align: left;
   padding: 0.5rem;
@@ -902,6 +909,21 @@ html {
   .category-tabs { gap: 0.3rem; }
   .category-tab { font-size: 0.7rem; padding: 0.4rem 0.5rem; }
   .pilar-tab { min-height: auto; }
+  .section-block { padding: 0.9rem; }
+  .data-table { min-width: 560px; }
+  .data-table th,
+  .data-table td { padding: 0.4rem; }
+  .data-table td input,
+  .data-table td select { min-height: 40px; }
+  .btn-primary,
+  .btn-secondary { min-height: 42px; }
+  .btn-remove-row {
+    min-width: 36px;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 }
 
 /* Overlay (shared login) */

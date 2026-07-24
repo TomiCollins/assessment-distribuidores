@@ -198,22 +198,24 @@
         </div>
         <div id="proveedores-section">
           <h4>Principales Proveedores</h4>
-          <table class="data-table" id="proveedores-table">
-            <thead>
-              <tr>
-                <th>Proveedor</th>
-                <th>% de ventas</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
-              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
-              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
-              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
-              <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
-            </tbody>
-          </table>
+          <div class="data-table-container">
+            <table class="data-table" id="proveedores-table">
+              <thead>
+                <tr>
+                  <th>Proveedor</th>
+                  <th>% de ventas</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+                <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+                <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+                <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+                <tr><td><input type="text"></td><td><input type="number" step="any"></td><td><button type="button" class="btn-remove-row" onclick="removeProveedorRow(this)">✕</button></td></tr>
+              </tbody>
+            </table>
+          </div>
           <button type="button" class="btn-secondary" onclick="addProveedorRow()">+ Agregar proveedor</button>
         </div>
       </div>
@@ -270,56 +272,60 @@
 
       <div class="section-block">
         <h3>Depósito</h3>
-        <table class="data-table" id="depositos-table">
-          <thead>
-            <tr>
-              <th>Dirección</th>
-              <th>Tamaño (m²)</th>
-              <th>Cantidad de Empleados</th>
-              <th>Horario de Atención</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><input type="text"></td>
-              <td><input type="number" step="any"></td>
-              <td><input type="number"></td>
-              <td><input type="text" placeholder="Ej: Lun-Vie 8 a 17"></td>
-              <td><button type="button" class="btn-remove-row" onclick="removeDepositRow(this)">✕</button></td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="data-table-container">
+          <table class="data-table" id="depositos-table">
+            <thead>
+              <tr>
+                <th>Dirección</th>
+                <th>Tamaño (m²)</th>
+                <th>Cantidad de Empleados</th>
+                <th>Horario de Atención</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><input type="text"></td>
+                <td><input type="number" step="any"></td>
+                <td><input type="number"></td>
+                <td><input type="text" placeholder="Ej: Lun-Vie 8 a 17"></td>
+                <td><button type="button" class="btn-remove-row" onclick="removeDepositRow(this)">✕</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <button type="button" class="btn-secondary" onclick="addDepositRow()">+ Agregar depósito</button>
       </div>
 
       <div class="section-block">
         <h3>Puntos de Venta</h3>
-        <table class="data-table" id="puntos-venta-table">
-          <thead>
-            <tr>
-              <th>Tipo</th>
-              <th>Dirección</th>
-              <th>Cantidad de Empleados</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>
-                <select>
-                  <option value="">Seleccionar...</option>
-                  <option value="Casa Central">Casa Central</option>
-                  <option value="Punto de Venta">Punto de Venta</option>
-                  <option value="Casa Central y Punto de Venta">Casa Central y Punto de Venta</option>
-                </select>
-              </td>
-              <td><input type="text"></td>
-              <td><input type="number" min="0"></td>
-              <td><button type="button" class="btn-remove-row" onclick="removePuntoVentaRow(this)">✕</button></td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="data-table-container">
+          <table class="data-table" id="puntos-venta-table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Dirección</th>
+                <th>Cantidad de Empleados</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <select>
+                    <option value="">Seleccionar...</option>
+                    <option value="Casa Central">Casa Central</option>
+                    <option value="Punto de Venta">Punto de Venta</option>
+                    <option value="Casa Central y Punto de Venta">Casa Central y Punto de Venta</option>
+                  </select>
+                </td>
+                <td><input type="text"></td>
+                <td><input type="number" min="0"></td>
+                <td><button type="button" class="btn-remove-row" onclick="removePuntoVentaRow(this)">✕</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <button type="button" class="btn-secondary" onclick="addPuntoVentaRow()">+ Agregar punto de venta</button>
       </div>
     </section>
