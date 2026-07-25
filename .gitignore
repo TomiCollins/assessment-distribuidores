@@ -1,3 +1,27 @@
-*.xlsx
-GUIA_POWER_AUTOMATE.md
+# === Secretos y config local ===
 config.js
+
+# === Datos sensibles / de importación ===
+usuarios*.csv
+importar_usuarios_supabase.ps1
+supabase/seed_dummies.sql
+
+# === Documentos internos / referencias ===
+*.xlsx
+*.pptx
+GUIA_POWER_AUTOMATE.md
+OnePage Piloto Digital GTM.html
+
+# === Archivos de desarrollo / previews ===
+dashboard_preview*.html
+analisis_distribuidores.html
+
+# === Sistema operativo / editor ===
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# === Dependencias node (por si en algún momento se usan) ===
+node_modules/

@@ -54,38 +54,337 @@
 
   <!-- HOME / DASHBOARD -->
   <div id="home-view" style="display:none">
-    <div class="home-container">
+    <div class="home-container" id="home-container">
       <div class="home-header">
-        <h2>Mis Assessments</h2>
+        <h2 id="home-title">Mis Assessments</h2>
         <div class="home-user-actions">
           <span class="user-email" id="user-email-display"></span>
           <button class="btn-secondary btn-sm" onclick="handleLogout()">Cerrar Sesión</button>
         </div>
       </div>
-      <button class="btn-primary btn-new-assessment" onclick="startNewAssessment()">+ Nuevo Assessment</button>
 
-      <div class="assessments-section" id="assessments-en-progreso">
-        <h3>En progreso</h3>
-        <div class="assessment-cards" id="cards-en-progreso"></div>
-      </div>
+      <nav class="home-tabs" id="home-tabs">
+        <button class="home-tab active" data-tab="mis" type="button">Mis Assessments</button>
+        <button class="home-tab" data-tab="dashboard" type="button">Dashboard</button>
+      </nav>
 
-      <div class="assessments-section" id="assessments-completados">
-        <div class="section-header-row">
-          <h3>Completados</h3>
-          <button class="btn-secondary btn-sm" id="btn-download-all" onclick="downloadAllCompleted()" style="display:none">Descargar todos los Excel</button>
+      <!-- TAB: Mis Assessments -->
+      <section class="home-tab-panel active" id="tab-panel-mis">
+        <button class="btn-primary btn-new-assessment" onclick="startNewAssessment()">+ Nuevo Assessment</button>
+
+        <div class="assessments-section" id="assessments-en-progreso">
+          <h3>En progreso</h3>
+          <div class="assessment-cards" id="cards-en-progreso"></div>
         </div>
-        <div class="assessment-cards" id="cards-completados"></div>
-      </div>
 
-      <!-- ADMIN SECTION -->
-      <div class="assessments-section" id="admin-section" style="display:none">
-        <div class="section-header-row">
-          <h3>Todos los Assessments (Admin)</h3>
-          <button class="btn-secondary btn-sm" id="btn-download-all-admin" onclick="downloadAllAdminZip()">Descargar todo (ZIP)</button>
+        <div class="assessments-section" id="assessments-completados">
+          <div class="section-header-row">
+            <h3>Completados</h3>
+            <button class="btn-secondary btn-sm" id="btn-download-all" onclick="downloadAllCompleted()" style="display:none">Descargar todos los Excel</button>
+          </div>
+          <div class="assessment-cards" id="cards-completados"></div>
         </div>
-        <div class="admin-breadcrumb" id="admin-breadcrumb"></div>
-        <div class="admin-content" id="admin-content"></div>
-      </div>
+
+        <!-- ADMIN SECTION -->
+        <div class="assessments-section" id="admin-section" style="display:none">
+          <div class="section-header-row">
+            <h3>Todos los Assessments (Admin)</h3>
+            <button class="btn-secondary btn-sm" id="btn-download-all-admin" onclick="downloadAllAdminZip()">Descargar todo (ZIP)</button>
+          </div>
+          <div class="admin-breadcrumb" id="admin-breadcrumb"></div>
+          <div class="admin-content" id="admin-content"></div>
+        </div>
+      </section>
+
+      <!-- TAB: Dashboard -->
+      <section class="home-tab-panel" id="tab-panel-dashboard" style="display:none">
+        <p class="dashboard-lead" id="dashboard-lead">Análisis consolidado sobre los assessments cargados. Los admin ven la red completa; el resto de los usuarios ve solo los distribuidores que cargaron.</p>
+
+        <nav class="dash-subtabs" id="dash-subtabs">
+          <button type="button" class="dash-subtab active" data-subtab="general">Análisis General</button>
+          <button type="button" class="dash-subtab" data-subtab="individual">Análisis Específico</button>
+          <button type="button" class="dash-subtab" data-subtab="matriz">Matriz Comparativa</button>
+          <button type="button" class="dash-subtab" data-subtab="rankings">Rankings</button>
+          <button type="button" class="dash-subtab" data-subtab="competencias">Competencias</button>
+          <button type="button" class="dash-subtab" data-subtab="hallazgos">Hallazgos IA</button>
+        </nav>
+
+        <div class="dash-controls">
+          <div class="dash-control">
+            <label for="dash-bu">BU</label>
+            <select id="dash-bu"><option value="">Todas</option></select>
+          </div>
+          <div class="dash-control">
+            <label for="dash-squad">Squad</label>
+            <select id="dash-squad"><option value="">Todos</option></select>
+          </div>
+          <div class="dash-control">
+            <label>Vista</label>
+            <div class="dash-view-toggle" id="dash-view-toggle" role="group" aria-label="Alternar entre competencias y pilares">
+              <button type="button" data-view="comp" class="active" title="9 competencias del Distribuidor Ideal">Competencias</button>
+              <button type="button" data-view="pilar" title="4 pilares estratégicos">Pilares</button>
+            </div>
+          </div>
+          <button class="btn-secondary btn-sm" type="button" id="dash-refresh">Actualizar</button>
+        </div>
+
+        <div id="dash-empty" class="dash-empty" style="display:none">
+          Todavía no hay assessments completados para mostrar en el alcance actual.
+        </div>
+
+        <div id="dash-body" style="display:none">
+          <section class="dash-subpanel active" id="dash-subpanel-general">
+          <article class="dash-card">
+            <h2>Estado del Assessment · Padrón 2026</h2>
+            <p class="dash-sub" id="dash-coverage-intro"></p>
+            <div class="dash-kpis" id="dash-kpis"></div>
+            <div class="dash-chart-grid">
+              <div class="dash-chart-card">
+                <div class="dash-chart-title">Distribuidores por BU</div>
+                <div class="dash-chart-box"><canvas id="dash-chart-cov-bu"></canvas></div>
+              </div>
+              <div class="dash-chart-card">
+                <div class="dash-chart-title">Estado del padrón</div>
+                <div class="dash-chart-box"><canvas id="dash-chart-cov-donut"></canvas></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="dash-card">
+            <h2>Cobertura por BU y Squad</h2>
+            <p class="dash-sub">Del total de centros de cada squad, cuántos ya cuentan con assessment cargado y cuántos siguen pendientes.</p>
+            <div class="dash-table-wrap"><table id="dash-coverage-table" class="dash-coverage-table"></table></div>
+          </article>
+
+          <article class="dash-card">
+            <h2>Panorama de la red</h2>
+            <p class="dash-sub">Calificación general y distribución de desempeño del alcance actual.</p>
+            <div class="dash-kpis" id="dash-network-kpis"></div>
+          </article>
+
+          <article class="dash-card">
+            <h2 id="dash-title-desempeno">Desempeño promedio por competencia</h2>
+            <p class="dash-sub">Promedio calculado sobre distribuidores del alcance actual, con ponderación de cada competencia.</p>
+            <div class="dash-two">
+              <div class="dash-chart-card">
+                <div class="dash-chart-box" style="height:320px;"><canvas id="dash-chart-comp-radar"></canvas></div>
+              </div>
+              <div class="dash-chart-card">
+                <div id="dash-comp-bars" class="dash-bars"></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="dash-card">
+            <h2>Lectura estratégica</h2>
+            <div class="dash-ai-head">
+              <div>
+                <span class="dash-ai-badge">Generado por IA</span>
+                <span class="dash-ai-meta" id="dash-strategic-meta"></span>
+              </div>
+              <button class="dash-ai-btn" id="dash-regenerate-strategic" type="button">Regenerar</button>
+            </div>
+            <div id="dash-strategic-notes" class="dash-ai-body"></div>
+          </article>
+          </section>
+
+          <section class="dash-subpanel" id="dash-subpanel-individual">
+            <article class="dash-card">
+              <h2>Análisis por distribuidor</h2>
+              <p class="dash-sub">Los filtros de BU y Squad de arriba acotan el listado. Elegí un distribuidor para ver su perfil de competencias, fortalezas y brechas frente al promedio de la red.</p>
+              <div class="dash-controls">
+                <div class="dash-control" style="flex:1;min-width:280px;">
+                  <label for="dash-ind-dist">Distribuidor</label>
+                  <select id="dash-ind-dist"></select>
+                </div>
+              </div>
+
+              <div id="dash-ind-empty" class="dash-empty" style="display:none">
+                No hay distribuidores con assessment completado en el alcance actual.
+              </div>
+
+              <div id="dash-ind-detail"></div>
+            </article>
+
+            <article class="dash-card" id="dash-ind-ai-card" style="display:none">
+              <h2>Lectura ejecutiva IA de este distribuidor</h2>
+              <div class="dash-ai-head">
+                <div>
+                  <span class="dash-ai-badge">Generado por IA</span>
+                  <span class="dash-ai-meta" id="dash-ind-ai-meta"></span>
+                </div>
+                <button class="dash-ai-btn" id="dash-ind-ai-btn" type="button">Generar</button>
+              </div>
+              <div id="dash-ind-ai-notes" class="dash-ai-body">
+                <p style="color:var(--medium-text)">Presioná <strong>Generar</strong> para obtener una lectura ejecutiva de este distribuidor en particular.</p>
+              </div>
+            </article>
+
+            <article class="dash-card">
+              <h2>Comparativa por BU y Squad</h2>
+              <p class="dash-sub" id="dash-squad-compare-sub">Promedio total de cada squad en el alcance actual. Verde ≥ 80%, amarillo 70-79%, rojo &lt; 70%.</p>
+              <div class="dash-chart-box" id="dash-squad-compare-box" style="height:360px;"><canvas id="dash-chart-squad-compare"></canvas></div>
+            </article>
+
+            <article class="dash-card">
+              <h2 id="dash-title-squad-hm">Promedio de competencias por squad</h2>
+              <p class="dash-sub" id="dash-sub-squad-hm">Heatmap de las 9 competencias por squad, con cantidad de distribuidores evaluados. Ordenado por total desc.</p>
+              <div class="dash-table-wrap dash-table-wrap--fit"><table id="dash-squad-heatmap" class="dash-heatmap"></table></div>
+            </article>
+          </section>
+
+          <section class="dash-subpanel" id="dash-subpanel-matriz">
+            <article class="dash-card">
+              <h2 id="dash-title-matriz">Matriz comparativa · Distribuidor × Competencia</h2>
+              <p class="dash-sub" id="dash-sub-matriz">Vista tabular de todos los distribuidores del alcance con su score total y por competencia. Buscá por nombre y ordená a gusto.</p>
+              <div class="dash-controls" style="margin-bottom:12px;">
+                <div class="dash-control" style="flex:1;min-width:260px;">
+                  <label for="dash-mat-search">Buscar distribuidor</label>
+                  <input type="text" id="dash-mat-search" placeholder="Nombre o CUIT" />
+                </div>
+                <div class="dash-control" style="min-width:200px;">
+                  <label for="dash-mat-sort">Orden</label>
+                  <select id="dash-mat-sort">
+                    <option value="total_desc">Score total (mayor a menor)</option>
+                    <option value="total_asc">Score total (menor a mayor)</option>
+                    <option value="name_asc">Nombre (A-Z)</option>
+                    <option value="name_desc">Nombre (Z-A)</option>
+                  </select>
+                </div>
+                <div class="dash-control" style="min-width:120px;">
+                  <label>&nbsp;</label>
+                  <div id="dash-mat-count" style="font-size:12px;color:var(--medium-text);padding-top:8px;">0 distribuidores</div>
+                </div>
+              </div>
+              <div class="dash-table-wrap dash-table-wrap--fit">
+                <table id="dash-matrix-table" class="dash-matrix"></table>
+              </div>
+              <div id="dash-mat-empty" class="dash-empty" style="display:none;margin-top:12px;">
+                No hay distribuidores que coincidan con la búsqueda.
+              </div>
+            </article>
+          </section>
+
+          <section class="dash-subpanel" id="dash-subpanel-rankings">
+            <div class="dash-two">
+              <article class="dash-card">
+                <h2>Top 10 distribuidores</h2>
+                <p class="dash-sub" id="dash-rank-top-sub">Mayor score total del alcance actual.</p>
+                <div id="dash-rank-top" class="dash-rank-list"></div>
+              </article>
+              <article class="dash-card">
+                <h2>Bottom 10 distribuidores</h2>
+                <p class="dash-sub" id="dash-rank-bot-sub">Menor score total del alcance actual. Foco de acompañamiento.</p>
+                <div id="dash-rank-bot" class="dash-rank-list"></div>
+              </article>
+            </div>
+            <article class="dash-card">
+              <h2 id="dash-title-lideres">Líderes por competencia</h2>
+              <p class="dash-sub">El distribuidor con mejor score en cada una de las 9 competencias dentro del alcance actual.</p>
+              <div class="dash-table-wrap dash-table-wrap--fit">
+                <table id="dash-rank-leaders" class="dash-leaders"></table>
+              </div>
+            </article>
+          </section>
+
+          <section class="dash-subpanel" id="dash-subpanel-competencias">
+            <article class="dash-card">
+              <h2>Deep-dive por competencia</h2>
+              <p class="dash-sub">Elegí una de las 9 competencias para ver su detalle en el alcance actual. Los filtros de BU / Squad de arriba acotan el análisis; opcionalmente podés focalizar en un distribuidor puntual.</p>
+              <div class="dash-controls">
+                <div class="dash-control" style="flex:2;min-width:280px;">
+                  <label for="dash-comp-select">Competencia</label>
+                  <select id="dash-comp-select"></select>
+                </div>
+                <div class="dash-control" style="flex:2;min-width:260px;">
+                  <label for="dash-comp-dist">Distribuidor (opcional)</label>
+                  <select id="dash-comp-dist"></select>
+                </div>
+              </div>
+              <div id="dash-comp-empty" class="dash-empty" style="display:none">
+                No hay distribuidores en el alcance actual.
+              </div>
+              <div id="dash-comp-detail"></div>
+            </article>
+
+            <article class="dash-card">
+              <h2>Comparativa por squad en la competencia seleccionada</h2>
+              <p class="dash-sub" id="dash-comp-squad-sub">Promedio de la competencia por squad en el alcance actual.</p>
+              <div class="dash-chart-box" id="dash-comp-squad-box" style="height:360px;">
+                <canvas id="dash-chart-comp-squad"></canvas>
+              </div>
+            </article>
+
+            <article class="dash-card">
+              <h2>Detalle</h2>
+              <p class="dash-sub" id="dash-comp-questions-sub">Puntaje por pregunta en el alcance actual comparado contra el promedio de la red completa.</p>
+              <div class="dash-chart-box" id="dash-comp-questions-box" style="height:420px;">
+                <canvas id="dash-chart-comp-questions"></canvas>
+              </div>
+              <div id="dash-comp-questions-empty" style="display:none;color:var(--medium-text);text-align:center;padding:24px;">
+                Sin datos suficientes para graficar esta competencia.
+              </div>
+            </article>
+
+            <article class="dash-card" id="dash-comp-obs-card" style="display:none;">
+              <h2>Observaciones del distribuidor</h2>
+              <div class="dash-ai-head">
+                <div>
+                  <span class="dash-ai-badge">Resumen IA</span>
+                  <span class="dash-ai-meta" id="dash-comp-obs-meta"></span>
+                </div>
+                <button id="dash-comp-obs-btn" class="dash-ai-btn" type="button">Generar resumen IA</button>
+              </div>
+              <p class="dash-sub" id="dash-comp-obs-sub">Síntesis IA de las observaciones cargadas en esta competencia.</p>
+              <div id="dash-comp-obs-summary" class="dash-ai-body">
+                <p style="color:var(--medium-text)">Presioná <strong>Generar resumen IA</strong> para sintetizar las observaciones cargadas.</p>
+              </div>
+            </article>
+
+            <article class="dash-card">
+              <h2>Hallazgos clave</h2>
+              <p class="dash-sub" id="dash-comp-findings-sub">Insights automáticos sobre esta competencia en el alcance actual.</p>
+              <div id="dash-comp-findings" class="dash-ai-body"></div>
+            </article>
+          </section>
+
+          <!-- SUB-PANEL: HALLAZGOS IA -->
+          <section class="dash-subpanel" id="dash-subpanel-hallazgos">
+            <article class="dash-card" id="dash-hz-ai-card">
+              <h2>Insights ejecutivos de red</h2>
+              <div class="dash-ai-head">
+                <div>
+                  <span class="dash-ai-badge">Generado por IA</span>
+                  <span class="dash-ai-meta" id="dash-hz-ai-meta"></span>
+                </div>
+                <button class="dash-ai-btn" id="dash-hz-ai-btn" type="button">Generar</button>
+              </div>
+              <p class="dash-sub" id="dash-hz-ai-sub">Patrones de red, oportunidades transversales y alertas detectadas sobre el alcance actual comparado con la red completa.</p>
+              <div id="dash-hz-ai-notes" class="dash-ai-body">
+                <p style="color:var(--medium-text)">Presioná <strong>Generar</strong> para obtener insights ejecutivos sobre la red.</p>
+              </div>
+            </article>
+
+            <article class="dash-card">
+              <h2>Outliers detectados</h2>
+              <p class="dash-sub" id="dash-hz-out-sub">Distribuidores que se despegan claramente del promedio de la red (arriba o abajo).</p>
+              <div id="dash-hz-outliers"></div>
+            </article>
+
+            <article class="dash-card">
+              <h2>Brechas por competencia</h2>
+              <p class="dash-sub" id="dash-hz-gap-sub">Diferencia entre el promedio del alcance actual y el promedio de la red completa.</p>
+              <div id="dash-hz-gaps"></div>
+            </article>
+
+            <article class="dash-card">
+              <h2>Correlaciones y patrones</h2>
+              <p class="dash-sub" id="dash-hz-corr-sub">Relaciones detectadas entre competencias en los distribuidores del alcance.</p>
+              <div id="dash-hz-corr"></div>
+            </article>
+          </section>
+        </div>
+      </section>
     </div>
   </div>
 
