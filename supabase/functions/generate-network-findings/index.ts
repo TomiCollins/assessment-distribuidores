@@ -101,7 +101,7 @@ serve(async (req) => {
     "- Exactamente 4 secciones: Posicionamiento del alcance, Fortaleza principal, Brecha crítica, Recomendación estratégica.",
     "- Cada content: 2 a 3 oraciones. Mencioná números concretos del contexto.",
     "- Compará siempre el alcance con el promedio de la red completa.",
-    "- Cuando aporte, mencioná en qué PILAR estratégico (Excelencia Comercial, Excelencia Operacional, Experiencia al Cliente / CX, o Digitalización y NMDN) se ubica la fortaleza o la brecha principal, usando el desglose por pilar del contexto.",
+    "- Cuando aporte, mencioná en qué PILAR estratégico (Excelencia Comercial, Excelencia Operacional, o Digitalización y NMDN) se ubica la fortaleza o la brecha principal, usando el desglose por pilar del contexto.",
     "- Si hay outliers relevantes (arriba o abajo), mencioná al menos uno por nombre para ilustrar.",
     "- No inventes datos. Usá SOLO lo del contexto.",
     "- No repitas el título dentro del content.",
@@ -120,7 +120,7 @@ serve(async (req) => {
     "Reglas estrictas:",
     "- Exactamente 4 secciones: Panorama general de la red, Fortaleza principal, Brechas y alertas, Oportunidades y recomendaciones.",
     "- Cada content: 2 a 3 oraciones. Mencioná números concretos del contexto.",
-    "- En 'Panorama general de la red' y 'Oportunidades y recomendaciones' usá el desglose por PILAR estratégico (Excelencia Comercial, Excelencia Operacional, Experiencia al Cliente / CX, Digitalización y NMDN) para dar una lectura de alto nivel: qué pilar sostiene la red y cuál está más rezagado.",
+    "- En 'Panorama general de la red' y 'Oportunidades y recomendaciones' usá el desglose por PILAR estratégico (Excelencia Comercial, Excelencia Operacional, Digitalización y NMDN) para dar una lectura de alto nivel: qué pilar sostiene la red y cuál está más rezagado.",
     "- Mencioná al menos un distribuidor por nombre entre referentes o rezagados.",
     "- Si hay diferencias entre BUs relevantes, mencionalas.",
     "- No inventes datos. Usá SOLO lo del contexto.",
@@ -225,7 +225,7 @@ serve(async (req) => {
         ? `\nMayor heterogeneidad interna: ${r.competenciaMayorDispersion.name} (${r.competenciaMayorDispersion.gap} pts entre ${r.competenciaMayorDispersion.min}% y ${r.competenciaMayorDispersion.max}%).`
         : "",
       pilaresBlock
-        ? "\nDESEMPEÑO POR PILAR ESTRATÉGICO (4 pilares que agrupan las 9 competencias):\n" + pilaresBlock
+        ? "\nDESEMPEÑO POR PILAR ESTRATÉGICO (3 pilares que agrupan las 9 competencias):\n" + pilaresBlock
         : "",
       "",
       "REFERENTES (top 3 por score total):",
@@ -263,7 +263,7 @@ serve(async (req) => {
       "COMPETENCIAS (alcance vs red completa, ordenadas por magnitud de brecha):",
       compsBlock,
       pilaresBlock
-        ? "\nDESEMPEÑO POR PILAR ESTRATÉGICO (4 pilares que agrupan las 9 competencias):\n" + pilaresBlock
+        ? "\nDESEMPEÑO POR PILAR ESTRATÉGICO (3 pilares que agrupan las 9 competencias):\n" + pilaresBlock
         : "",
       "",
       "OUTLIERS POR ARRIBA (>= +10 pts vs promedio del alcance):",

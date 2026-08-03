@@ -89,7 +89,7 @@ serve(async (req) => {
     "- Cada content: 2 a 4 oraciones. Mencioná números concretos del contexto cuando aplique.",
     "- Compará el score del distribuidor con el promedio de la red cuando aporte contexto.",
     tienePilares
-      ? "- En 'Diagnóstico general' mencioná explícitamente cómo se posiciona el distribuidor en los 4 pilares estratégicos (Excelencia Comercial, Excelencia Operacional, Experiencia al Cliente / CX, Digitalización y NMDN), destacando el pilar más fuerte y el más débil."
+      ? "- En 'Diagnóstico general' mencioná explícitamente cómo se posiciona el distribuidor en los 3 pilares estratégicos (Excelencia Comercial, Excelencia Operacional, Digitalización y NMDN), destacando el pilar más fuerte y el más débil."
       : "",
     "- En 'Fortalezas destacadas' y 'Prioridades de mejora' mencioná no sólo las competencias sino ejemplos específicos (aspectos concretos) del listado provisto.",
     tieneObservaciones
@@ -167,7 +167,7 @@ serve(async (req) => {
   if (tienePilares) {
     userPromptParts.push(
       "",
-      "DESGLOSE POR PILAR ESTRATÉGICO (4 pilares que agrupan las 9 competencias):",
+      "DESGLOSE POR PILAR ESTRATÉGICO (3 pilares que agrupan las 9 competencias):",
       pilaresBlock,
     );
   }

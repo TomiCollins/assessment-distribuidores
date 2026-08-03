@@ -1456,7 +1456,7 @@ const PILARES = [
     shortName: "Excelencia Comercial",
     color: "#0068B4",
     colorRgba: "rgba(0, 104, 180, 0.25)",
-    categoryKeys: ["vision_estrategica", "gestion_comercial", "generacion_demanda"]
+    categoryKeys: ["vision_estrategica", "cobertura_acceso", "gestion_comercial", "generacion_demanda"]
   },
   {
     id: "eo",
@@ -1466,15 +1466,6 @@ const PILARES = [
     color: "#00824B",
     colorRgba: "rgba(0, 130, 75, 0.25)",
     categoryKeys: ["recursos_humanos", "competencia_financiera", "logistica_operaciones", "seguridad_sustentabilidad"]
-  },
-  {
-    id: "cx",
-    key: "experiencia_cliente",
-    name: "CX · Experiencia Cliente",
-    shortName: "CX",
-    color: "#F57C00",
-    colorRgba: "rgba(245, 124, 0, 0.25)",
-    categoryKeys: ["cobertura_acceso"]
   },
   {
     id: "dig",

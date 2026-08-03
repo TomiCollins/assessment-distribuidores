@@ -2587,14 +2587,12 @@ const DASH_COMPETENCE_WEIGHTS = {
 const DASH_PILARES = [
   { id: "ec",  name: "Excelencia Comercial",        short: "Excelencia Comercial",   radar: "Comercial",   color: "#0068B4" },
   { id: "eo",  name: "Excelencia Operacional",      short: "Excelencia Operacional", radar: "Operacional", color: "#00824B" },
-  { id: "cx",  name: "Experiencia al Cliente",      short: "Experiencia al Cliente", radar: "CX",          color: "#F57C00" },
   { id: "dig", name: "Digitalización y NMDN",       short: "Digital y NMDN",         radar: "Digital",     color: "#7B1FA2" }
 ];
 
 const DASH_PILAR_CATEGORIES = {
-  ec:  ["Visión Estratégica/Gerencial", "Gestión Comercial y Estructura", "Generación de Demanda y Gestión de Portafólio"],
+  ec:  ["Visión Estratégica/Gerencial", "Cobertura y Acceso al Mercado", "Gestión Comercial y Estructura", "Generación de Demanda y Gestión de Portafólio"],
   eo:  ["Recursos Humanos", "Competencia Financiera", "Logística y Operaciones", "Seguridad, Higiene y Sustentabilidad"],
-  cx:  ["Cobertura y Acceso al Mercado"],
   dig: ["Digitalización"]
 };
 
@@ -2622,7 +2620,7 @@ let _dashViewMode = 'comp'; // 'comp' | 'pilar'
 try { _dashViewMode = localStorage.getItem('dashViewMode') === 'pilar' ? 'pilar' : 'comp'; } catch (_) {}
 
 // Adaptador único para que cada render sepa qué dimensiones usar
-// (9 competencias o 4 pilares) sin tener 2 versiones de cada función.
+// (9 competencias o 3 pilares) sin tener 2 versiones de cada función.
 function dashDimensions() {
   if (_dashViewMode === 'pilar') {
     return {
@@ -2659,7 +2657,7 @@ function dashUpdateDynamicTitles() {
   set('dash-title-desempeno', isPilar ? 'Desempeño promedio por pilar' : 'Desempeño promedio por competencia');
   set('dash-title-squad-hm',  isPilar ? 'Promedio de pilares por squad' : 'Promedio de competencias por squad');
   set('dash-sub-squad-hm',    isPilar
-    ? 'Heatmap de los 4 pilares estratégicos por squad, con cantidad de distribuidores evaluados. Ordenado por total desc.'
+    ? 'Heatmap de los 3 pilares estratégicos por squad, con cantidad de distribuidores evaluados. Ordenado por total desc.'
     : 'Heatmap de las 9 competencias por squad, con cantidad de distribuidores evaluados. Ordenado por total desc.');
   set('dash-title-matriz',    isPilar ? 'Matriz comparativa · Distribuidor × Pilar' : 'Matriz comparativa · Distribuidor × Competencia');
   set('dash-sub-matriz',      isPilar
@@ -3376,7 +3374,7 @@ function enhanceSearchableSelect(sel, opts = {}) {
 }
 
 function buildDashStrategicPayload(ctx) {
-  // Calcula el promedio ponderado de cada uno de los 4 pilares
+  // Calcula el promedio ponderado de cada uno de los 3 pilares
   // usando el promedio ya calculado de cada competencia (ctx.compRows).
   // Peso del pilar = suma de pesos de las competencias que lo integran.
   const pilares = DASH_PILARES.map(p => {
@@ -3843,11 +3841,13 @@ function renderDashIndividualDetail() {
 
   const totalClass = dashScoreClass(subject.total);
   const sortedCats = subject.cats.slice().sort((a, b) => b.score - a.score);
-  // En modo pilar sólo hay 4 dimensiones: mostramos 2+2 para evitar que la misma
-  // aparezca en Fortalezas y en Brechas. En modo competencias mantenemos 3+3.
-  const highlightN = dims.mode === 'pilar' ? 2 : 3;
-  const topN = sortedCats.slice(0, highlightN);
-  const bottomN = sortedCats.slice(-highlightN).reverse();
+  // Evitamos que una misma dimensión aparezca en Fortalezas y en Brechas:
+  // en modo pilar hay 3 dimensiones (top 2, bottom 1); en competencias hay 9 (top 3, bottom 3).
+  const nDims = sortedCats.length;
+  const topN_ct = dims.mode === 'pilar' ? Math.ceil(nDims / 2) : 3;
+  const bottomN_ct = dims.mode === 'pilar' ? Math.max(0, nDims - topN_ct) : 3;
+  const topN = sortedCats.slice(0, topN_ct);
+  const bottomN = bottomN_ct > 0 ? sortedCats.slice(-bottomN_ct).reverse() : [];
 
   const barRow = (c) => {
     const cls = dashScoreClass(c.score);

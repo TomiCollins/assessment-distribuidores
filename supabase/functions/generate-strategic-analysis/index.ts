@@ -68,7 +68,7 @@ serve(async (req) => {
     "",
     "Reglas estrictas:",
     "- Exactamente 5 a 6 secciones: Panorámica general, Cobertura territorial, Lectura por pilar, Fortalezas y brechas, Digitalización, Recomendación comercial.",
-    "- En la sección 'Lectura por pilar' analizá los 4 pilares estratégicos (Excelencia Comercial, Excelencia Operacional, Experiencia al Cliente / CX, Digitalización y NMDN) mencionando el score de cada uno y qué implica esa lectura agregada para la red.",
+    "- En la sección 'Lectura por pilar' analizá los 3 pilares estratégicos (Excelencia Comercial, Excelencia Operacional, Digitalización y NMDN) mencionando el score de cada uno y qué implica esa lectura agregada para la red.",
     "- Cada content: 2 a 4 oraciones. Menciona números concretos del contexto.",
     "- No inventes datos ni distribuidores. Usá solo los que aparecen en el contexto.",
     "- No repitas el título dentro del content.",
@@ -79,7 +79,7 @@ serve(async (req) => {
   const pilaresBlock = (ctx.pilares && ctx.pilares.length)
     ? [
       "",
-      "DESEMPEÑO POR PILAR ESTRATÉGICO (4 pilares que agrupan las 9 competencias):",
+      "DESEMPEÑO POR PILAR ESTRATÉGICO (3 pilares que agrupan las 9 competencias):",
       ctx.pilares
         .map((p) => `- ${p.name}: ${p.avg}% (peso ${p.weight}%)`)
         .join("\n"),
