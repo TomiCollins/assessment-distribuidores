@@ -1465,6 +1465,10 @@ html {
   font-size: 0.9rem;
 }
 
+.porcentaje-input {
+  flex: 0 0 90px;
+}
+
 .zona-input:focus {
   outline: none;
   border-color: var(--primary-blue);

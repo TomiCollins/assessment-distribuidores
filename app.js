@@ -809,7 +809,7 @@ function resetWizardForm() {
   document.getElementById('squad').value = '';
   document.getElementById('fecha').valueAsDate = new Date();
   const zonasContainer = document.getElementById('zonas-container');
-  zonasContainer.innerHTML = '<div class="zona-row"><input type="text" class="zona-input" placeholder="Zona atendida"></div>';
+  zonasContainer.innerHTML = '<div class="zona-row"><input type="text" class="zona-input departamento-input" placeholder="Departamento atendido"><input type="number" class="zona-input porcentaje-input" placeholder="%" min="0" max="100" step="0.01" aria-label="Porcentaje del departamento"></div>';
 
   ['facturacion_total', 'representatividad_bayer', 'facturacion_bayer',
     'num_proveedores', 'total_clientes', 'clientes_bayer',
@@ -940,7 +940,8 @@ function addZona() {
   const row = document.createElement('div');
   row.className = 'zona-row';
   row.innerHTML = `
-    <input type="text" class="zona-input" placeholder="Zona atendida">
+    <input type="text" class="zona-input departamento-input" placeholder="Departamento atendido">
+    <input type="number" class="zona-input porcentaje-input" placeholder="%" min="0" max="100" step="0.01" aria-label="Porcentaje del departamento">
     <button type="button" class="btn-remove-zona" onclick="removeZona(this)">✕</button>
   `;
   container.appendChild(row);
@@ -954,9 +955,13 @@ function removeZona(btn) {
 }
 
 function getZonasValues() {
-  return Array.from(document.querySelectorAll('.zona-input'))
-    .map(input => input.value.trim())
-    .filter(v => v);
+  return Array.from(document.querySelectorAll('.zona-row'))
+    .map(row => {
+      const departamento = row.querySelector('.departamento-input')?.value.trim() || '';
+      const porcentaje = row.querySelector('.porcentaje-input')?.value || '';
+      return departamento ? { departamento, porcentaje } : null;
+    })
+    .filter(Boolean);
 }
 
 function restoreZonas(zonas) {
@@ -964,10 +969,13 @@ function restoreZonas(zonas) {
   container.innerHTML = '';
   if (zonas.length === 0) zonas = [''];
   zonas.forEach((z, i) => {
+    const departamento = typeof z === 'string' ? z : (z?.departamento || '');
+    const porcentaje = typeof z === 'string' ? '' : (z?.porcentaje ?? '');
     const row = document.createElement('div');
     row.className = 'zona-row';
     row.innerHTML = `
-      <input type="text" class="zona-input" placeholder="Zona atendida" value="${z}">
+      <input type="text" class="zona-input departamento-input" placeholder="Departamento atendido" value="${dashEscapeHtml(departamento)}">
+      <input type="number" class="zona-input porcentaje-input" placeholder="%" min="0" max="100" step="0.01" aria-label="Porcentaje del departamento" value="${dashEscapeHtml(porcentaje)}">
       ${i > 0 ? '<button type="button" class="btn-remove-zona" onclick="removeZona(this)">✕</button>' : ''}
     `;
     container.appendChild(row);
@@ -1451,11 +1459,11 @@ function calculatePilarResults(baseResults) {
 function renderResults() {
   const datos = getDatosValues();
   const esc = dashEscapeHtml;
-  const zonasList = Array.isArray(datos.zonas_atendidas) ? datos.zonas_atendidas.join(', ') : (datos.zonas_atendidas || '-');
+  const zonasList = formatZonasAtendidas(datos.zonas_atendidas);
   document.getElementById('results-header').innerHTML = `
     <p><strong>Distribuidor:</strong> ${esc(datos.nombre_distribuidor || '-')} | <strong>CUIT:</strong> ${esc(datos.cuit || '-')}</p>
     <p><strong>BU:</strong> ${esc(datos.region || '-')} | <strong>Squad:</strong> ${esc(datos.squad || '-')}</p>
-    <p><strong>Zonas:</strong> ${esc(zonasList)} | <strong>Fecha:</strong> ${esc(datos.fecha || '-')}</p>
+    <p><strong>Departamentos atendidos:</strong> ${esc(zonasList)} | <strong>Fecha:</strong> ${esc(datos.fecha || '-')}</p>
   `;
 
   const results = calculateResults();
@@ -1623,13 +1631,13 @@ async function exportExcel() {
   const datosHeader = wsDatos.addRow(['Campo', 'Valor']);
   datosHeader.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
 
-  const zonasStr = Array.isArray(datos.zonas_atendidas) ? datos.zonas_atendidas.join(', ') : (datos.zonas_atendidas || '');
+  const zonasStr = formatZonasAtendidas(datos.zonas_atendidas);
   const datosFields = [
     ['Razón Social', datos.nombre_distribuidor || ''],
     ['CUIT', datos.cuit || ''],
     ['BU', datos.region || ''],
     ['Squad', datos.squad || ''],
-    ['Zonas Atendidas', zonasStr],
+    ['Departamentos atendidos', zonasStr],
     ['Fecha', datos.fecha || ''],
     ['Vendedor', state.vendedorNombre || ''],
     ['Usuario', currentUser?.email || '']
@@ -1936,13 +1944,13 @@ async function generateExcelBuffer(assessment) {
   wsDatos.addRow([]);
   const datosHeader = wsDatos.addRow(['Campo', 'Valor']);
   datosHeader.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = borders; });
-  const zonasStr = Array.isArray(datos.zonas_atendidas) ? datos.zonas_atendidas.join(', ') : (datos.zonas_atendidas || '');
+  const zonasStr = formatZonasAtendidas(datos.zonas_atendidas);
   const datosFields = [
     ['Razón Social', datos.nombre_distribuidor || ''],
     ['CUIT', datos.cuit || ''],
     ['BU', datos.region || ''],
     ['Squad', datos.squad || ''],
-    ['Zonas Atendidas', zonasStr],
+    ['Departamentos atendidos', zonasStr],
     ['Fecha', datos.fecha || ''],
     ['Vendedor', assessment.vendedor || ''],
     ['Usuario', userEmail]
@@ -2278,6 +2286,15 @@ function getDatosValues() {
     zonas_atendidas: getZonasValues(),
     fecha: document.getElementById('fecha')?.value || ''
   };
+}
+
+function formatZonasAtendidas(zonas) {
+  if (!Array.isArray(zonas)) return zonas || '-';
+  return zonas.map(z => {
+    if (typeof z === 'string') return z;
+    const porcentaje = z?.porcentaje === '' || z?.porcentaje === undefined ? '' : ` (${z.porcentaje}%)`;
+    return `${z?.departamento || ''}${porcentaje}`;
+  }).filter(Boolean).join(', ') || '-';
 }
 
 function getPorteValues() {
