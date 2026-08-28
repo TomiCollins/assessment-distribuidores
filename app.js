@@ -467,6 +467,7 @@ async function openAssessment(id) {
   resetWizardForm();
   restoreFromPayload(payload);
   initWizard();
+  if (hasNewerLocalDraft(data.updated_at)) loadFromStorage();
   goToStep(state.currentStep);
 }
 
@@ -490,6 +491,7 @@ async function viewCompletedAssessment(id) {
   resetWizardForm();
   restoreFromPayload(payload);
   initWizard();
+  if (hasNewerLocalDraft(data.updated_at)) loadFromStorage();
   goToStep(4);
 }
 
@@ -1041,11 +1043,35 @@ function loadFromStorage() {
   } catch(e) { /* ignore corrupt data */ }
 }
 
+function hasNewerLocalDraft(updatedAt) {
+  const key = getStorageKey();
+  if (!key) return false;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    return !!saved?.timestamp && saved.timestamp > (Date.parse(updatedAt || '') || 0);
+  } catch (e) {
+    return false;
+  }
+}
+
 // === SUPABASE SYNC ===
 function debouncedSync() {
   clearTimeout(syncTimer);
   syncTimer = setTimeout(() => syncToSupabase(), 10000);
 }
+
+function persistAssessmentBeforeExit() {
+  if (!currentUser || !currentAssessmentId) return;
+  clearTimeout(syncTimer);
+  saveToStorage();
+  clearTimeout(syncTimer);
+  syncToSupabase();
+}
+
+window.addEventListener('pagehide', persistAssessmentBeforeExit);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') persistAssessmentBeforeExit();
+});
 
 async function syncToSupabase() {
   if (!currentUser || !currentAssessmentId) return;
