@@ -446,6 +446,7 @@ function startNewAssessment() {
 }
 
 async function openAssessment(id) {
+  clearTimeout(syncTimer);
   const { data, error } = await supabaseClient.from('assessments').select('*').eq('id', id).single();
   if (error || !data) {
     showToast('No se pudo cargar el assessment.');
@@ -463,12 +464,14 @@ async function openAssessment(id) {
     : getPilarIndexByCategoryIndex(state.currentCategory);
 
   showWizard();
+  resetWizardForm();
   restoreFromPayload(payload);
   initWizard();
   goToStep(state.currentStep);
 }
 
 async function viewCompletedAssessment(id) {
+  clearTimeout(syncTimer);
   const { data, error } = await supabaseClient.from('assessments').select('*').eq('id', id).single();
   if (error || !data) {
     showToast('No se pudo cargar el assessment.');
@@ -484,6 +487,7 @@ async function viewCompletedAssessment(id) {
   state.currentPillar = 0;
 
   showWizard();
+  resetWizardForm();
   restoreFromPayload(payload);
   initWizard();
   goToStep(4);
@@ -2368,12 +2372,12 @@ function restorePorteValues(porte) {
 
   fields.forEach(f => {
     const el = document.getElementById(f);
-    if (el && porte[f]) el.value = porte[f];
+    if (el) el.value = porte[f] || '';
   });
 
+  const tbody = document.querySelector('#proveedores-table tbody');
+  tbody.innerHTML = '';
   if (porte.proveedores && porte.proveedores.length > 0) {
-    const tbody = document.querySelector('#proveedores-table tbody');
-    tbody.innerHTML = '';
     porte.proveedores.forEach(p => {
       const row = document.createElement('tr');
       row.innerHTML = `
@@ -2383,6 +2387,10 @@ function restorePorteValues(porte) {
       `;
       tbody.appendChild(row);
     });
+  } else {
+    addProveedorRow();
+    addProveedorRow();
+    addProveedorRow();
   }
 
   if (porte.otras_areas && porte.otras_areas.length > 0) {
